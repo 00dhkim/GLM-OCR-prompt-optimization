@@ -1,0 +1,60 @@
+{"id": "IMG00008_Item_Unit_Price", "image_path": "../../korie-ocr/train/train/IMG00008_Item_Unit_Price.jpg", "reference_text": "3,600", "split": "dev", "metadata": {"category": "Item_Unit_Price"}}
+{"id": "IMG00029_MerchantAddress", "image_path": "../../korie-ocr/train/train/IMG00029_MerchantAddress.jpg", "reference_text": "충청북도 청주시 서원구 1순환로 892 (산남동)", "split": "dev", "metadata": {"category": "MerchantAddress"}}
+{"id": "IMG00030_Total", "image_path": "../../korie-ocr/train/train/IMG00030_Total.jpg", "reference_text": "3,000", "split": "dev", "metadata": {"category": "Total"}}
+{"id": "IMG00034_Item_Quantity_Item_Weight", "image_path": "../../korie-ocr/train/train/IMG00034_Item_Quantity_Item_Weight.jpg", "reference_text": "1", "split": "dev", "metadata": {"category": "Item_Quantity_Item_Weight"}}
+{"id": "IMG00036_Item_Quantity_Item_Weight", "image_path": "../../korie-ocr/train/train/IMG00036_Item_Quantity_Item_Weight.jpg", "reference_text": "1", "split": "dev", "metadata": {"category": "Item_Quantity_Item_Weight"}}
+{"id": "IMG00048_Item_barcode", "image_path": "../../korie-ocr/train/train/IMG00048_Item_barcode.jpg", "reference_text": "&nart 80 1853", "split": "dev", "metadata": {"category": "Item_barcode"}}
+{"id": "IMG00050_PaymentDate", "image_path": "../../korie-ocr/train/train/IMG00050_PaymentDate.jpg", "reference_text": "23-10-21", "split": "dev", "metadata": {"category": "PaymentDate"}}
+{"id": "IMG00075_TransactionDate", "image_path": "../../korie-ocr/train/train/IMG00075_TransactionDate.jpg", "reference_text": "2023. 11. 11", "split": "dev", "metadata": {"category": "TransactionDate"}}
+{"id": "IMG00084_Subtotal", "image_path": "../../korie-ocr/train/train/IMG00084_Subtotal.jpg", "reference_text": "84,00", "split": "dev", "metadata": {"category": "Subtotal"}}
+{"id": "IMG00093_Item_barcode", "image_path": "../../korie-ocr/train/train/IMG00093_Item_barcode.jpg", "reference_text": "0028 NH 54611120 ** 249*/59284097", "split": "dev", "metadata": {"category": "Item_barcode"}}
+{"id": "IMG00099_MerchantAddress", "image_path": "../../korie-ocr/train/train/IMG00099_MerchantAddress.jpg", "reference_text": "충북 청주시 서원구 산남동 334-3", "split": "dev", "metadata": {"category": "MerchantAddress"}}
+{"id": "IMG00100_Subtotal", "image_path": "../../korie-ocr/train/train/IMG00100_Subtotal.jpg", "reference_text": "39,088", "split": "dev", "metadata": {"category": "Subtotal"}}
+{"id": "IMG00104_Item_barcode", "image_path": "../../korie-ocr/train/train/IMG00104_Item_barcode.jpg", "reference_text": "001", "split": "dev", "metadata": {"category": "Item_barcode"}}
+{"id": "IMG00109_PaymentDate", "image_path": "../../korie-ocr/train/train/IMG00109_PaymentDate.jpg", "reference_text": "2023. 12. 17", "split": "dev", "metadata": {"category": "PaymentDate"}}
+{"id": "IMG00109_TotalTax", "image_path": "../../korie-ocr/train/train/IMG00109_TotalTax.jpg", "reference_text": "1,001", "split": "dev", "metadata": {"category": "TotalTax"}}
+{"id": "IMG00118_Total", "image_path": "../../korie-ocr/train/train/IMG00118_Total.jpg", "reference_text": "45,280", "split": "dev", "metadata": {"category": "Total"}}
+{"id": "IMG00133_TotalTax", "image_path": "../../korie-ocr/train/train/IMG00133_TotalTax.jpg", "reference_text": "273", "split": "dev", "metadata": {"category": "TotalTax"}}
+{"id": "IMG00148_Total", "image_path": "../../korie-ocr/train/train/IMG00148_Total.jpg", "reference_text": "2,300", "split": "dev", "metadata": {"category": "Total"}}
+{"id": "IMG00164_PaymentDate", "image_path": "../../korie-ocr/train/train/IMG00164_PaymentDate.jpg", "reference_text": "23-11-22 19:15,", "split": "dev", "metadata": {"category": "PaymentDate"}}
+{"id": "IMG00168_PaymentDate", "image_path": "../../korie-ocr/train/train/IMG00168_PaymentDate.jpg", "reference_text": "23-11-22 18:02,", "split": "dev", "metadata": {"category": "PaymentDate"}}
+{"id": "IMG00199_Item_barcode", "image_path": "../../korie-ocr/train/train/IMG00199_Item_barcode.jpg", "reference_text": "001 002", "split": "dev", "metadata": {"category": "Item_barcode"}}
+{"id": "IMG00204_Total", "image_path": "../../korie-ocr/train/train/IMG00204_Total.jpg", "reference_text": "15.700", "split": "dev", "metadata": {"category": "Total"}}
+{"id": "IMG00220_Item_Unit_Price", "image_path": "../../korie-ocr/train/train/IMG00220_Item_Unit_Price.jpg", "reference_text": "1,500 1,000 1,000 2,650 600", "split": "dev", "metadata": {"category": "Item_Unit_Price"}}
+{"id": "IMG00223_MerchantName", "image_path": "../../korie-ocr/train/train/IMG00223_MerchantName.jpg", "reference_text": "천사(1004)마트", "split": "dev", "metadata": {"category": "MerchantName"}}
+{"id": "IMG00224_Total", "image_path": "../../korie-ocr/train/train/IMG00224_Total.jpg", "reference_text": "16,000", "split": "dev", "metadata": {"category": "Total"}}
+{"id": "IMG00226_TransactionTime", "image_path": "../../korie-ocr/train/train/IMG00226_TransactionTime.jpg", "reference_text": "18:37,", "split": "dev", "metadata": {"category": "TransactionTime"}}
+{"id": "IMG00236_MerchantPhoneNumber", "image_path": "../../korie-ocr/train/train/IMG00236_MerchantPhoneNumber.jpg", "reference_text": ":043-277-4959", "split": "dev", "metadata": {"category": "MerchantPhoneNumber"}}
+{"id": "IMG00249_MerchantName", "image_path": "../../korie-ocr/train/train/IMG00249_MerchantName.jpg", "reference_text": "주)한국마트", "split": "dev", "metadata": {"category": "MerchantName"}}
+{"id": "IMG00270_MerchantAddress", "image_path": "../../korie-ocr/train/train/IMG00270_MerchantAddress.jpg", "reference_text": "충북 흥덕구 청주시 복대동 107-1", "split": "dev", "metadata": {"category": "MerchantAddress"}}
+{"id": "IMG00280_Total_Discount", "image_path": "../../korie-ocr/train/train/IMG00280_Total_Discount.jpg", "reference_text": "0", "split": "dev", "metadata": {"category": "Total_Discount"}}
+{"id": "IMG00284_Item_Total_Price", "image_path": "../../korie-ocr/train/train/IMG00284_Item_Total_Price.jpg", "reference_text": "35,750", "split": "dev", "metadata": {"category": "Item_Total_Price"}}
+{"id": "IMG00284_Item_discount_value", "image_path": "../../korie-ocr/train/train/IMG00284_Item_discount_value.jpg", "reference_text": "5,000점", "split": "dev", "metadata": {"category": "Item_discount_value"}}
+{"id": "IMG00300_Item_Total_Price", "image_path": "../../korie-ocr/train/train/IMG00300_Item_Total_Price.jpg", "reference_text": "3,990*# 1,980*", "split": "dev", "metadata": {"category": "Item_Total_Price"}}
+{"id": "IMG00343_TotalTax", "image_path": "../../korie-ocr/train/train/IMG00343_TotalTax.jpg", "reference_text": "227", "split": "dev", "metadata": {"category": "TotalTax"}}
+{"id": "IMG00347_MerchantAddress", "image_path": "../../korie-ocr/train/train/IMG00347_MerchantAddress.jpg", "reference_text": "충북 청주시 서원구 모충로12번길 9-13 상가동 8호~10호 (개신동, 한사랑아파 트)", "split": "dev", "metadata": {"category": "MerchantAddress"}}
+{"id": "IMG00351_MerchantAddress", "image_path": "../../korie-ocr/train/train/IMG00351_MerchantAddress.jpg", "reference_text": "충북 청주시 서원구 산남동 334-3", "split": "dev", "metadata": {"category": "MerchantAddress"}}
+{"id": "IMG00365_ReceiptNumber", "image_path": "../../korie-ocr/train/train/IMG00365_ReceiptNumber.jpg", "reference_text": "0506005987", "split": "dev", "metadata": {"category": "ReceiptNumber"}}
+{"id": "IMG00368_Item_Unit_Price", "image_path": "../../korie-ocr/train/train/IMG00368_Item_Unit_Price.jpg", "reference_text": "1,490", "split": "dev", "metadata": {"category": "Item_Unit_Price"}}
+{"id": "IMG00386_Sub_Total_after_discount", "image_path": "../../korie-ocr/train/train/IMG00386_Sub_Total_after_discount.jpg", "reference_text": "27,500", "split": "dev", "metadata": {"category": "Sub_Total_after_discount"}}
+{"id": "IMG00388_TransactionDate", "image_path": "../../korie-ocr/train/train/IMG00388_TransactionDate.jpg", "reference_text": "2025-02-05", "split": "dev", "metadata": {"category": "TransactionDate"}}
+{"id": "IMG00430_TransactionDate", "image_path": "../../korie-ocr/train/train/IMG00430_TransactionDate.jpg", "reference_text": "2025. 05. 21", "split": "dev", "metadata": {"category": "TransactionDate"}}
+{"id": "IMG00433_Item_barcode", "image_path": "../../korie-ocr/train/train/IMG00433_Item_barcode.jpg", "reference_text": "[1054547]", "split": "dev", "metadata": {"category": "Item_barcode"}}
+{"id": "IMG00433_TransactionTime", "image_path": "../../korie-ocr/train/train/IMG00433_TransactionTime.jpg", "reference_text": "21:58:44", "split": "dev", "metadata": {"category": "TransactionTime"}}
+{"id": "IMG00462_TransactionTime", "image_path": "../../korie-ocr/train/train/IMG00462_TransactionTime.jpg", "reference_text": "16:39:53", "split": "dev", "metadata": {"category": "TransactionTime"}}
+{"id": "IMG00474_TransactionDate", "image_path": "../../korie-ocr/train/train/IMG00474_TransactionDate.jpg", "reference_text": "2025/02/22", "split": "dev", "metadata": {"category": "TransactionDate"}}
+{"id": "IMG00521_Item_barcode", "image_path": "../../korie-ocr/train/train/IMG00521_Item_barcode.jpg", "reference_text": "001 002 003 004", "split": "dev", "metadata": {"category": "Item_barcode"}}
+{"id": "IMG00552_Item_Unit_Price", "image_path": "../../korie-ocr/train/train/IMG00552_Item_Unit_Price.jpg", "reference_text": "2,600 4,980 1,390", "split": "dev", "metadata": {"category": "Item_Unit_Price"}}
+{"id": "IMG00560_Item_Total_Price", "image_path": "../../korie-ocr/train/train/IMG00560_Item_Total_Price.jpg", "reference_text": "13,160", "split": "dev", "metadata": {"category": "Item_Total_Price"}}
+{"id": "IMG00560_MerchantName", "image_path": "../../korie-ocr/train/train/IMG00560_MerchantName.jpg", "reference_text": "주) 우리유통(우리마트", "split": "dev", "metadata": {"category": "MerchantName"}}
+{"id": "IMG00567_TotalTax", "image_path": "../../korie-ocr/train/train/IMG00567_TotalTax.jpg", "reference_text": "490", "split": "dev", "metadata": {"category": "TotalTax"}}
+{"id": "IMG00579_Total_Discount", "image_path": "../../korie-ocr/train/train/IMG00579_Total_Discount.jpg", "reference_text": "3,000원", "split": "dev", "metadata": {"category": "Total_Discount"}}
+{"id": "IMG00595_Total", "image_path": "../../korie-ocr/train/train/IMG00595_Total.jpg", "reference_text": "13,610", "split": "dev", "metadata": {"category": "Total"}}
+{"id": "IMG00608_Total", "image_path": "../../korie-ocr/train/train/IMG00608_Total.jpg", "reference_text": "34,600", "split": "dev", "metadata": {"category": "Total"}}
+{"id": "IMG00610_Item_Unit_Price", "image_path": "../../korie-ocr/train/train/IMG00610_Item_Unit_Price.jpg", "reference_text": "2,000 2,000", "split": "dev", "metadata": {"category": "Item_Unit_Price"}}
+{"id": "IMG00622_Sub_Total_after_discount", "image_path": "../../korie-ocr/train/train/IMG00622_Sub_Total_after_discount.jpg", "reference_text": "1, 000", "split": "dev", "metadata": {"category": "Sub_Total_after_discount"}}
+{"id": "IMG00624_ReceiptNumber", "image_path": "../../korie-ocr/train/train/IMG00624_ReceiptNumber.jpg", "reference_text": "980214000926(0) 30216926", "split": "dev", "metadata": {"category": "ReceiptNumber"}}
+{"id": "IMG00637_TransactionTime", "image_path": "../../korie-ocr/train/train/IMG00637_TransactionTime.jpg", "reference_text": "17:49:11", "split": "dev", "metadata": {"category": "TransactionTime"}}
+{"id": "IMG00647_PaymentDate", "image_path": "../../korie-ocr/train/train/IMG00647_PaymentDate.jpg", "reference_text": "2025.10.25", "split": "dev", "metadata": {"category": "PaymentDate"}}
+{"id": "IMG00659_Subtotal", "image_path": "../../korie-ocr/train/train/IMG00659_Subtotal.jpg", "reference_text": "10,400", "split": "dev", "metadata": {"category": "Subtotal"}}
+{"id": "IMG00671_TransactionTime", "image_path": "../../korie-ocr/train/train/IMG00671_TransactionTime.jpg", "reference_text": "21:44:16", "split": "dev", "metadata": {"category": "TransactionTime"}}

@@ -1,0 +1,100 @@
+{"id": "IMG00006_Total", "image_path": "../../korie-ocr/val/val/IMG00006_Total.jpg", "reference_text": "30,200", "split": "val", "metadata": {"category": "Total"}}
+{"id": "IMG00019_Item_Unit_Price", "image_path": "../../korie-ocr/val/val/IMG00019_Item_Unit_Price.jpg", "reference_text": "3,800", "split": "val", "metadata": {"category": "Item_Unit_Price"}}
+{"id": "IMG00019_Sub_Total_after_discount", "image_path": "../../korie-ocr/val/val/IMG00019_Sub_Total_after_discount.jpg", "reference_text": "-2,640", "split": "val", "metadata": {"category": "Sub_Total_after_discount"}}
+{"id": "IMG00022_MerchantName", "image_path": "../../korie-ocr/val/val/IMG00022_MerchantName.jpg", "reference_text": "오지 (OHJD)", "split": "val", "metadata": {"category": "MerchantName"}}
+{"id": "IMG00024_MerchantName", "image_path": "../../korie-ocr/val/val/IMG00024_MerchantName.jpg", "reference_text": "마이스", "split": "val", "metadata": {"category": "MerchantName"}}
+{"id": "IMG00035_Item_Unit_Price", "image_path": "../../korie-ocr/val/val/IMG00035_Item_Unit_Price.jpg", "reference_text": "1,000", "split": "val", "metadata": {"category": "Item_Unit_Price"}}
+{"id": "IMG00037_Item_Quantity_Item_Weight", "image_path": "../../korie-ocr/val/val/IMG00037_Item_Quantity_Item_Weight.jpg", "reference_text": "7", "split": "val", "metadata": {"category": "Item_Quantity_Item_Weight"}}
+{"id": "IMG00052_TransactionTime", "image_path": "../../korie-ocr/val/val/IMG00052_TransactionTime.jpg", "reference_text": "20:11:07", "split": "val", "metadata": {"category": "TransactionTime"}}
+{"id": "IMG00053_TotalTax", "image_path": "../../korie-ocr/val/val/IMG00053_TotalTax.jpg", "reference_text": "1,818원", "split": "val", "metadata": {"category": "TotalTax"}}
+{"id": "IMG00058_MerchantPhoneNumber", "image_path": "../../korie-ocr/val/val/IMG00058_MerchantPhoneNumber.jpg", "reference_text": "043-291-6016", "split": "val", "metadata": {"category": "MerchantPhoneNumber"}}
+{"id": "IMG00058_Sub_Total_after_discount", "image_path": "../../korie-ocr/val/val/IMG00058_Sub_Total_after_discount.jpg", "reference_text": "9,500", "split": "val", "metadata": {"category": "Sub_Total_after_discount"}}
+{"id": "IMG00064_TransactionTime", "image_path": "../../korie-ocr/val/val/IMG00064_TransactionTime.jpg", "reference_text": "18:49:32", "split": "val", "metadata": {"category": "TransactionTime"}}
+{"id": "IMG00069_Item_barcode", "image_path": "../../korie-ocr/val/val/IMG00069_Item_barcode.jpg", "reference_text": "[927502332] [106287541] [921556530] [514010550] [926940911]", "split": "val", "metadata": {"category": "Item_barcode"}}
+{"id": "IMG00070_MerchantAddress", "image_path": "../../korie-ocr/val/val/IMG00070_MerchantAddress.jpg", "reference_text": "서울 강남구 남부순환로 2748 (도곡동)", "split": "val", "metadata": {"category": "MerchantAddress"}}
+{"id": "IMG00072_Total", "image_path": "../../korie-ocr/val/val/IMG00072_Total.jpg", "reference_text": "86,500", "split": "val", "metadata": {"category": "Total"}}
+{"id": "IMG00076_PaymentDate", "image_path": "../../korie-ocr/val/val/IMG00076_PaymentDate.jpg", "reference_text": "23-11-14 21:14, 화요", "split": "val", "metadata": {"category": "PaymentDate"}}
+{"id": "IMG00077_MerchantAddress", "image_path": "../../korie-ocr/val/val/IMG00077_MerchantAddress.jpg", "reference_text": "서울 강남구 남부순환로 2748 (도곡동)", "split": "val", "metadata": {"category": "MerchantAddress"}}
+{"id": "IMG00085_TotalTax", "image_path": "../../korie-ocr/val/val/IMG00085_TotalTax.jpg", "reference_text": "1,250", "split": "val", "metadata": {"category": "TotalTax"}}
+{"id": "IMG00093_Subtotal", "image_path": "../../korie-ocr/val/val/IMG00093_Subtotal.jpg", "reference_text": "22,064", "split": "val", "metadata": {"category": "Subtotal"}}
+{"id": "IMG00103_MerchantName", "image_path": "../../korie-ocr/val/val/IMG00103_MerchantName.jpg", "reference_text": "주) 한국마트", "split": "val", "metadata": {"category": "MerchantName"}}
+{"id": "IMG00116_Total", "image_path": "../../korie-ocr/val/val/IMG00116_Total.jpg", "reference_text": "3,000", "split": "val", "metadata": {"category": "Total"}}
+{"id": "IMG00120_Item_Quantity_Item_Weight", "image_path": "../../korie-ocr/val/val/IMG00120_Item_Quantity_Item_Weight.jpg", "reference_text": "2", "split": "val", "metadata": {"category": "Item_Quantity_Item_Weight"}}
+{"id": "IMG00123_Item_Unit_Price", "image_path": "../../korie-ocr/val/val/IMG00123_Item_Unit_Price.jpg", "reference_text": "2,000", "split": "val", "metadata": {"category": "Item_Unit_Price"}}
+{"id": "IMG00128_MerchantName", "image_path": "../../korie-ocr/val/val/IMG00128_MerchantName.jpg", "reference_text": "(주)아성다이소_ 청주개신오거리점", "split": "val", "metadata": {"category": "MerchantName"}}
+{"id": "IMG00146_Item_Total_Price", "image_path": "../../korie-ocr/val/val/IMG00146_Item_Total_Price.jpg", "reference_text": "3,600 3,980 310", "split": "val", "metadata": {"category": "Item_Total_Price"}}
+{"id": "IMG00150_MerchantPhoneNumber", "image_path": "../../korie-ocr/val/val/IMG00150_MerchantPhoneNumber.jpg", "reference_text": "043-277-4959", "split": "val", "metadata": {"category": "MerchantPhoneNumber"}}
+{"id": "IMG00158_MerchantPhoneNumber", "image_path": "../../korie-ocr/val/val/IMG00158_MerchantPhoneNumber.jpg", "reference_text": "043-277-4959", "split": "val", "metadata": {"category": "MerchantPhoneNumber"}}
+{"id": "IMG00160_TransactionTime", "image_path": "../../korie-ocr/val/val/IMG00160_TransactionTime.jpg", "reference_text": "19:00,", "split": "val", "metadata": {"category": "TransactionTime"}}
+{"id": "IMG00162_PaymentDate", "image_path": "../../korie-ocr/val/val/IMG00162_PaymentDate.jpg", "reference_text": ":23-11-22 18:13,", "split": "val", "metadata": {"category": "PaymentDate"}}
+{"id": "IMG00164_Item_barcode", "image_path": "../../korie-ocr/val/val/IMG00164_Item_barcode.jpg", "reference_text": "001", "split": "val", "metadata": {"category": "Item_barcode"}}
+{"id": "IMG00166_ReceiptNumber", "image_path": "../../korie-ocr/val/val/IMG00166_ReceiptNumber.jpg", "reference_text": "00727413,", "split": "val", "metadata": {"category": "ReceiptNumber"}}
+{"id": "IMG00169_Subtotal", "image_path": "../../korie-ocr/val/val/IMG00169_Subtotal.jpg", "reference_text": "310", "split": "val", "metadata": {"category": "Subtotal"}}
+{"id": "IMG00172_MerchantAddress", "image_path": "../../korie-ocr/val/val/IMG00172_MerchantAddress.jpg", "reference_text": "충북 청주시 서원구 모충로12번길 9-13 상가동 8호~10호 (개신동, 한사랑아파 트 )", "split": "val", "metadata": {"category": "MerchantAddress"}}
+{"id": "IMG00183_Item_barcode", "image_path": "../../korie-ocr/val/val/IMG00183_Item_barcode.jpg", "reference_text": "[POS 1068437]", "split": "val", "metadata": {"category": "Item_barcode"}}
+{"id": "IMG00195_TransactionDate", "image_path": "../../korie-ocr/val/val/IMG00195_TransactionDate.jpg", "reference_text": "2023년12월06일", "split": "val", "metadata": {"category": "TransactionDate"}}
+{"id": "IMG00198_Total_Discount", "image_path": "../../korie-ocr/val/val/IMG00198_Total_Discount.jpg", "reference_text": "리", "split": "val", "metadata": {"category": "Total_Discount"}}
+{"id": "IMG00205_MerchantAddress", "image_path": "../../korie-ocr/val/val/IMG00205_MerchantAddress.jpg", "reference_text": "충북 청주시 서원구 모충로12번", "split": "val", "metadata": {"category": "MerchantAddress"}}
+{"id": "IMG00208_MerchantName", "image_path": "../../korie-ocr/val/val/IMG00208_MerchantName.jpg", "reference_text": "천사(1004)마트", "split": "val", "metadata": {"category": "MerchantName"}}
+{"id": "IMG00216_ReceiptNumber", "image_path": "../../korie-ocr/val/val/IMG00216_ReceiptNumber.jpg", "reference_text": "30098732, 183853", "split": "val", "metadata": {"category": "ReceiptNumber"}}
+{"id": "IMG00219_Item_Total_Price", "image_path": "../../korie-ocr/val/val/IMG00219_Item_Total_Price.jpg", "reference_text": "25,300", "split": "val", "metadata": {"category": "Item_Total_Price"}}
+{"id": "IMG00256_PaymentDate", "image_path": "../../korie-ocr/val/val/IMG00256_PaymentDate.jpg", "reference_text": "2023.01.07", "split": "val", "metadata": {"category": "PaymentDate"}}
+{"id": "IMG00258_TransactionDate", "image_path": "../../korie-ocr/val/val/IMG00258_TransactionDate.jpg", "reference_text": "24-01-11", "split": "val", "metadata": {"category": "TransactionDate"}}
+{"id": "IMG00261_Item_barcode", "image_path": "../../korie-ocr/val/val/IMG00261_Item_barcode.jpg", "reference_text": "6970162492217", "split": "val", "metadata": {"category": "Item_barcode"}}
+{"id": "IMG00271_Item_Quantity_Item_Weight", "image_path": "../../korie-ocr/val/val/IMG00271_Item_Quantity_Item_Weight.jpg", "reference_text": "1 1", "split": "val", "metadata": {"category": "Item_Quantity_Item_Weight"}}
+{"id": "IMG00275_Total", "image_path": "../../korie-ocr/val/val/IMG00275_Total.jpg", "reference_text": "4,000", "split": "val", "metadata": {"category": "Total"}}
+{"id": "IMG00277_Item_Total_Price", "image_path": "../../korie-ocr/val/val/IMG00277_Item_Total_Price.jpg", "reference_text": "7,440 4, 980* 12,980 3,980 980 990", "split": "val", "metadata": {"category": "Item_Total_Price"}}
+{"id": "IMG00280_MerchantPhoneNumber", "image_path": "../../korie-ocr/val/val/IMG00280_MerchantPhoneNumber.jpg", "reference_text": "043-264-0088", "split": "val", "metadata": {"category": "MerchantPhoneNumber"}}
+{"id": "IMG00283_MerchantName", "image_path": "../../korie-ocr/val/val/IMG00283_MerchantName.jpg", "reference_text": "Homeplus", "split": "val", "metadata": {"category": "MerchantName"}}
+{"id": "IMG00290_TransactionTime", "image_path": "../../korie-ocr/val/val/IMG00290_TransactionTime.jpg", "reference_text": "22:10,", "split": "val", "metadata": {"category": "TransactionTime"}}
+{"id": "IMG00291_TransactionDate", "image_path": "../../korie-ocr/val/val/IMG00291_TransactionDate.jpg", "reference_text": "2024. 01.21", "split": "val", "metadata": {"category": "TransactionDate"}}
+{"id": "IMG00322_Item_Unit_Price", "image_path": "../../korie-ocr/val/val/IMG00322_Item_Unit_Price.jpg", "reference_text": "2,990 990 600", "split": "val", "metadata": {"category": "Item_Unit_Price"}}
+{"id": "IMG00325_Item_Quantity_Item_Weight", "image_path": "../../korie-ocr/val/val/IMG00325_Item_Quantity_Item_Weight.jpg", "reference_text": "인", "split": "val", "metadata": {"category": "Item_Quantity_Item_Weight"}}
+{"id": "IMG00325_Item_Total_Price", "image_path": "../../korie-ocr/val/val/IMG00325_Item_Total_Price.jpg", "reference_text": "14,300", "split": "val", "metadata": {"category": "Item_Total_Price"}}
+{"id": "IMG00350_Item_Unit_Price", "image_path": "../../korie-ocr/val/val/IMG00350_Item_Unit_Price.jpg", "reference_text": "3,990 3,990 3,990", "split": "val", "metadata": {"category": "Item_Unit_Price"}}
+{"id": "IMG00353_TransactionTime", "image_path": "../../korie-ocr/val/val/IMG00353_TransactionTime.jpg", "reference_text": "20:13:59", "split": "val", "metadata": {"category": "TransactionTime"}}
+{"id": "IMG00361_Item_barcode", "image_path": "../../korie-ocr/val/val/IMG00361_Item_barcode.jpg", "reference_text": "546111", "split": "val", "metadata": {"category": "Item_barcode"}}
+{"id": "IMG00395_Item_Total_Price", "image_path": "../../korie-ocr/val/val/IMG00395_Item_Total_Price.jpg", "reference_text": "2,300", "split": "val", "metadata": {"category": "Item_Total_Price"}}
+{"id": "IMG00418_Item_barcode", "image_path": "../../korie-ocr/val/val/IMG00418_Item_barcode.jpg", "reference_text": "OBJWKR", "split": "val", "metadata": {"category": "Item_barcode"}}
+{"id": "IMG00425_TotalTax", "image_path": "../../korie-ocr/val/val/IMG00425_TotalTax.jpg", "reference_text": "1,001", "split": "val", "metadata": {"category": "TotalTax"}}
+{"id": "IMG00429_Item_Total_Price", "image_path": "../../korie-ocr/val/val/IMG00429_Item_Total_Price.jpg", "reference_text": "7,274 8,000", "split": "val", "metadata": {"category": "Item_Total_Price"}}
+{"id": "IMG00435_Subtotal", "image_path": "../../korie-ocr/val/val/IMG00435_Subtotal.jpg", "reference_text": "10,470", "split": "val", "metadata": {"category": "Subtotal"}}
+{"id": "IMG00449_TransactionDate", "image_path": "../../korie-ocr/val/val/IMG00449_TransactionDate.jpg", "reference_text": "2025. 01. 12", "split": "val", "metadata": {"category": "TransactionDate"}}
+{"id": "IMG00458_MerchantName", "image_path": "../../korie-ocr/val/val/IMG00458_MerchantName.jpg", "reference_text": "수)한국마트", "split": "val", "metadata": {"category": "MerchantName"}}
+{"id": "IMG00460_Item_barcode", "image_path": "../../korie-ocr/val/val/IMG00460_Item_barcode.jpg", "reference_text": "TM:000104 NO:0415", "split": "val", "metadata": {"category": "Item_barcode"}}
+{"id": "IMG00470_MerchantPhoneNumber", "image_path": "../../korie-ocr/val/val/IMG00470_MerchantPhoneNumber.jpg", "reference_text": "1670-9827", "split": "val", "metadata": {"category": "MerchantPhoneNumber"}}
+{"id": "IMG00472_Item_Quantity_Item_Weight", "image_path": "../../korie-ocr/val/val/IMG00472_Item_Quantity_Item_Weight.jpg", "reference_text": "4", "split": "val", "metadata": {"category": "Item_Quantity_Item_Weight"}}
+{"id": "IMG00475_PaymentDate", "image_path": "../../korie-ocr/val/val/IMG00475_PaymentDate.jpg", "reference_text": "24-11-29 24-11-29", "split": "val", "metadata": {"category": "PaymentDate"}}
+{"id": "IMG00482_Item_Total_Price", "image_path": "../../korie-ocr/val/val/IMG00482_Item_Total_Price.jpg", "reference_text": "11,740", "split": "val", "metadata": {"category": "Item_Total_Price"}}
+{"id": "IMG00489_ReceiptNumber", "image_path": "../../korie-ocr/val/val/IMG00489_ReceiptNumber.jpg", "reference_text": "1231309711 2512313097113", "split": "val", "metadata": {"category": "ReceiptNumber"}}
+{"id": "IMG00494_Item_barcode", "image_path": "../../korie-ocr/val/val/IMG00494_Item_barcode.jpg", "reference_text": "[POS 1068433] [629180141]", "split": "val", "metadata": {"category": "Item_barcode"}}
+{"id": "IMG00494_ReceiptNumber", "image_path": "../../korie-ocr/val/val/IMG00494_ReceiptNumber.jpg", "reference_text": "00309789(0) 30216926", "split": "val", "metadata": {"category": "ReceiptNumber"}}
+{"id": "IMG00496_MerchantAddress", "image_path": "../../korie-ocr/val/val/IMG00496_MerchantAddress.jpg", "reference_text": "충북 청주시 서원구 산남동 334-3", "split": "val", "metadata": {"category": "MerchantAddress"}}
+{"id": "IMG00503_PaymentDate", "image_path": "../../korie-ocr/val/val/IMG00503_PaymentDate.jpg", "reference_text": "2023.11.29", "split": "val", "metadata": {"category": "PaymentDate"}}
+{"id": "IMG00504_TotalTax", "image_path": "../../korie-ocr/val/val/IMG00504_TotalTax.jpg", "reference_text": "1,656", "split": "val", "metadata": {"category": "TotalTax"}}
+{"id": "IMG00512_Item_Unit_Price", "image_path": "../../korie-ocr/val/val/IMG00512_Item_Unit_Price.jpg", "reference_text": "1,000 1,500 1,990 980", "split": "val", "metadata": {"category": "Item_Unit_Price"}}
+{"id": "IMG00519_MerchantAddress", "image_path": "../../korie-ocr/val/val/IMG00519_MerchantAddress.jpg", "reference_text": "충북 청주시 서원구 모충로12번길 9-13 상가동 8호~10호 (개신동, 한사랑아파 트 )", "split": "val", "metadata": {"category": "MerchantAddress"}}
+{"id": "IMG00525_Item_Unit_Price", "image_path": "../../korie-ocr/val/val/IMG00525_Item_Unit_Price.jpg", "reference_text": "1,000 1,990 1,500 500", "split": "val", "metadata": {"category": "Item_Unit_Price"}}
+{"id": "IMG00531_Item_Quantity_Item_Weight", "image_path": "../../korie-ocr/val/val/IMG00531_Item_Quantity_Item_Weight.jpg", "reference_text": "1 2 1", "split": "val", "metadata": {"category": "Item_Quantity_Item_Weight"}}
+{"id": "IMG00538_TransactionDate", "image_path": "../../korie-ocr/val/val/IMG00538_TransactionDate.jpg", "reference_text": "24-03-17", "split": "val", "metadata": {"category": "TransactionDate"}}
+{"id": "IMG00540_ReceiptNumber", "image_path": "../../korie-ocr/val/val/IMG00540_ReceiptNumber.jpg", "reference_text": "01780374, 195443", "split": "val", "metadata": {"category": "ReceiptNumber"}}
+{"id": "IMG00540_TotalTax", "image_path": "../../korie-ocr/val/val/IMG00540_TotalTax.jpg", "reference_text": "163", "split": "val", "metadata": {"category": "TotalTax"}}
+{"id": "IMG00542_PaymentDate", "image_path": "../../korie-ocr/val/val/IMG00542_PaymentDate.jpg", "reference_text": "24-03-04 20:11, 월", "split": "val", "metadata": {"category": "PaymentDate"}}
+{"id": "IMG00554_MerchantPhoneNumber", "image_path": "../../korie-ocr/val/val/IMG00554_MerchantPhoneNumber.jpg", "reference_text": ":043-277-3700", "split": "val", "metadata": {"category": "MerchantPhoneNumber"}}
+{"id": "IMG00563_Item_barcode", "image_path": "../../korie-ocr/val/val/IMG00563_Item_barcode.jpg", "reference_text": "1J6843", "split": "val", "metadata": {"category": "Item_barcode"}}
+{"id": "IMG00567_PaymentDate", "image_path": "../../korie-ocr/val/val/IMG00567_PaymentDate.jpg", "reference_text": "2025-07-07(월", "split": "val", "metadata": {"category": "PaymentDate"}}
+{"id": "IMG00569_TransactionDate", "image_path": "../../korie-ocr/val/val/IMG00569_TransactionDate.jpg", "reference_text": "2025.06.28", "split": "val", "metadata": {"category": "TransactionDate"}}
+{"id": "IMG00570_TransactionDate", "image_path": "../../korie-ocr/val/val/IMG00570_TransactionDate.jpg", "reference_text": "2025. 05. 06", "split": "val", "metadata": {"category": "TransactionDate"}}
+{"id": "IMG00583_MerchantAddress", "image_path": "../../korie-ocr/val/val/IMG00583_MerchantAddress.jpg", "reference_text": "충북 청주시 서원구 쌍샘로 109", "split": "val", "metadata": {"category": "MerchantAddress"}}
+{"id": "IMG00588_MerchantName", "image_path": "../../korie-ocr/val/val/IMG00588_MerchantName.jpg", "reference_text": "이마트24 충북대공학관점", "split": "val", "metadata": {"category": "MerchantName"}}
+{"id": "IMG00596_Item_Quantity_Item_Weight", "image_path": "../../korie-ocr/val/val/IMG00596_Item_Quantity_Item_Weight.jpg", "reference_text": "1 1 1", "split": "val", "metadata": {"category": "Item_Quantity_Item_Weight"}}
+{"id": "IMG00624_Item_Quantity_Item_Weight", "image_path": "../../korie-ocr/val/val/IMG00624_Item_Quantity_Item_Weight.jpg", "reference_text": "1 1", "split": "val", "metadata": {"category": "Item_Quantity_Item_Weight"}}
+{"id": "IMG00624_MerchantName", "image_path": "../../korie-ocr/val/val/IMG00624_MerchantName.jpg", "reference_text": "(주)아성다이소. 청주산남2호점", "split": "val", "metadata": {"category": "MerchantName"}}
+{"id": "IMG00627_TransactionDate", "image_path": "../../korie-ocr/val/val/IMG00627_TransactionDate.jpg", "reference_text": "2025. 10. 25", "split": "val", "metadata": {"category": "TransactionDate"}}
+{"id": "IMG00642_TransactionDate", "image_path": "../../korie-ocr/val/val/IMG00642_TransactionDate.jpg", "reference_text": "20 09-27", "split": "val", "metadata": {"category": "TransactionDate"}}
+{"id": "IMG00647_MerchantAddress", "image_path": "../../korie-ocr/val/val/IMG00647_MerchantAddress.jpg", "reference_text": "서울 강남구 남부순환로 2748 (도곡동)", "split": "val", "metadata": {"category": "MerchantAddress"}}
+{"id": "IMG00660_MerchantAddress", "image_path": "../../korie-ocr/val/val/IMG00660_MerchantAddress.jpg", "reference_text": "충북 청주시 서원구 쌍샘로 109", "split": "val", "metadata": {"category": "MerchantAddress"}}
+{"id": "IMG00664_Item_Quantity_Item_Weight", "image_path": "../../korie-ocr/val/val/IMG00664_Item_Quantity_Item_Weight.jpg", "reference_text": "1", "split": "val", "metadata": {"category": "Item_Quantity_Item_Weight"}}
+{"id": "IMG00667_MerchantPhoneNumber", "image_path": "../../korie-ocr/val/val/IMG00667_MerchantPhoneNumber.jpg", "reference_text": ":043-277-3700~1", "split": "val", "metadata": {"category": "MerchantPhoneNumber"}}
+{"id": "IMG00670_MerchantName", "image_path": "../../korie-ocr/val/val/IMG00670_MerchantName.jpg", "reference_text": "주)우리", "split": "val", "metadata": {"category": "MerchantName"}}
+{"id": "IMG00674_TransactionDate", "image_path": "../../korie-ocr/val/val/IMG00674_TransactionDate.jpg", "reference_text": "2025-07-18", "split": "val", "metadata": {"category": "TransactionDate"}}
