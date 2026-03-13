@@ -1,0 +1,2 @@
+{"id":"sample-001","image_path":"images/sample-001.png","reference_text":"스타벅스 아메리카노 4500","split":"dev","metadata":{"source":"example"}}
+{"id":"sample-002","image_path":"images/sample-002.png","reference_text":"합계 12000","split":"dev","metadata":{"source":"example"}}

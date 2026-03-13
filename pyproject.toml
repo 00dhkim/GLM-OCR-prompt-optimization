@@ -1,0 +1,26 @@
+[project]
+name = "glm-ocr-prompt-optimization"
+version = "0.1.0"
+description = "Prompt optimization workflow for improving GLM-OCR on Korean receipts."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "openai>=1.68.2",
+  "pydantic>=2.10.6",
+  "python-dotenv>=1.0.1",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3.5",
+]
+
+[project.scripts]
+glm-ocr-opt = "glm_ocr_prompt_optimization.cli:main"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.uv]
+package = true
