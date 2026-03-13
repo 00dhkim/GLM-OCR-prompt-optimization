@@ -166,13 +166,23 @@ def main() -> None:
         )
         baseline = _find_prompt(validation_rows, "baseline")
         final = _find_prompt(validation_rows, "final")
+        adopted_prompt, adopted_reason = runner.select_adopted_prompt(
+            baseline_prompt=PromptCandidate(name="baseline", text="Text Recognition:"),
+            final_prompt=PromptCandidate(name="final", text=final_prompt.text),
+            baseline_eval=baseline,
+            final_eval=final,
+        )
+        (args.output_dir / "adopted_prompt.txt").write_text(adopted_prompt.text, encoding="utf-8")
         runner.build_report(
             baseline=baseline,
             final=final,
+            adopted_prompt=adopted_prompt,
+            adopted_reason=adopted_reason,
             final_evaluations_path=args.output_dir / "validation" / "final" / "evaluations.jsonl",
             report_path=args.output_dir / "final_report.json",
         )
         print(_format_aggregate(final))
+        print(f"adopted={adopted_prompt.name}")
         return
 
     parser.error(f"Unknown command: {args.command}")

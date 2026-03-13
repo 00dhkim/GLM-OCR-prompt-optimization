@@ -207,6 +207,7 @@ cython_debug/
 /data/korie-ocr/
 /runs/
 /data/manifests/korie-ocr/one.jsonl
+/data/manifests/korie-ocr-smoke/
 
 # Marimo
 marimo/_static/

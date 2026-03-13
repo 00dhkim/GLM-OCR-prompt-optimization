@@ -48,3 +48,13 @@
 - 확인 기록: `data/manifests/korie-ocr/one.jsonl` 1건으로 seed smoke run을 실행함.
 - 결과: `P0` 기준 CER 0.0000으로 경로가 정상 동작함.
 - 의미: 현재 코드 기준으로 `manifest -> Ollama GLM-OCR -> 평가/로그 저장` 흐름이 실제 실행 가능함을 확인.
+
+- 실행 계획: 전체 실행 전, 5개 dev / 5개 val 샘플로 optimizer 경로를 smoke validation 한다.
+- 이유: OpenAI optimizer 응답 형식과 Ollama OCR 호출을 함께 검증해야 전체 라운드 실패 비용을 줄일 수 있기 때문.
+
+- 실행 계획: smoke run 성공 후 KORIE OCR 공개 manifest 전체(dev 60 / val 100)로 run-all을 실행한다.
+- 주의: 이 데이터는 field crop OCR 벤치마크이며, 전체 영수증 OCR은 아님. 현재 공개 데이터 기준 최적화 결과로 기록한다.
+
+- 구현 보완: validation 결과를 본 뒤 PRD의 최종 채택 규칙이 코드에 반영되지 않은 것을 확인.
+- 조치: baseline/final validation 집계를 기반으로 adopted prompt를 결정하는 로직과 산출물(adopted_prompt.txt, report 반영)을 추가함.
+- 이유: 최적화가 validation에서 실패한 경우 baseline을 채택해야 PRD와 일치하기 때문.

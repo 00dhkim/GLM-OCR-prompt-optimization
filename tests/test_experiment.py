@@ -122,8 +122,48 @@ def test_build_report_creates_json(tmp_path: Path) -> None:
     report_path = runner.build_report(
         baseline=baseline,
         final=final,
+        adopted_prompt=PromptCandidate(name="baseline", text="Text Recognition:"),
+        adopted_reason="validation fallback",
         final_evaluations_path=evaluation_path,
         report_path=tmp_path / "report.json",
     )
 
     assert report_path.exists()
+
+
+def test_select_adopted_prompt_falls_back_to_baseline_when_final_is_worse(tmp_path: Path) -> None:
+    runner = ExperimentRunner(_build_settings(tmp_path))
+    baseline_prompt = PromptCandidate(name="baseline", text="Text Recognition:")
+    final_prompt = PromptCandidate(name="final", text="long optimized prompt")
+    baseline = AggregateEvaluation(
+        prompt_name="baseline",
+        prompt_text=baseline_prompt.text,
+        sample_count=100,
+        mean_cer=0.3,
+        mean_base_score=0.7,
+        mean_total_score=0.69,
+        non_korean_rate=0.01,
+        repetition_rate=0.0,
+        empty_rate=0.01,
+    )
+    final = AggregateEvaluation(
+        prompt_name="final",
+        prompt_text=final_prompt.text,
+        sample_count=100,
+        mean_cer=0.6,
+        mean_base_score=0.4,
+        mean_total_score=0.39,
+        non_korean_rate=0.0,
+        repetition_rate=0.0,
+        empty_rate=0.02,
+    )
+
+    adopted, reason = runner.select_adopted_prompt(
+        baseline_prompt=baseline_prompt,
+        final_prompt=final_prompt,
+        baseline_eval=baseline,
+        final_eval=final,
+    )
+
+    assert adopted.name == "baseline"
+    assert "Rejected optimized prompt" in reason

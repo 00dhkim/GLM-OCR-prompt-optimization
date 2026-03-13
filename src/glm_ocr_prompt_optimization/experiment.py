@@ -162,6 +162,8 @@ class ExperimentRunner:
         *,
         baseline: AggregateEvaluation,
         final: AggregateEvaluation,
+        adopted_prompt: PromptCandidate,
+        adopted_reason: str,
         final_evaluations_path: Path,
         report_path: Path,
         examples_count: int = 10,
@@ -184,10 +186,43 @@ class ExperimentRunner:
                 "repetition_rate_delta": baseline.repetition_rate - final.repetition_rate,
                 "empty_rate_delta": baseline.empty_rate - final.empty_rate,
             },
+            "adopted_prompt": {
+                "name": adopted_prompt.name,
+                "text": adopted_prompt.text,
+                "reason": adopted_reason,
+            },
             "examples": [self._serialize_evaluation(row) for row in improved_examples],
         }
         report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         return report_path
+
+    def select_adopted_prompt(
+        self,
+        *,
+        baseline_prompt: PromptCandidate,
+        final_prompt: PromptCandidate,
+        baseline_eval: AggregateEvaluation,
+        final_eval: AggregateEvaluation,
+        max_prompt_length: int = 240,
+        tie_margin: float = 0.01,
+    ) -> tuple[PromptCandidate, str]:
+        if len(final_prompt.text) > max_prompt_length:
+            return baseline_prompt, "Rejected optimized prompt because it exceeded the prompt length limit."
+
+        cer_improved = final_eval.mean_cer < baseline_eval.mean_cer
+        stability_improved = (
+            final_eval.non_korean_rate < baseline_eval.non_korean_rate
+            or final_eval.repetition_rate < baseline_eval.repetition_rate
+        )
+        if cer_improved and stability_improved:
+            return final_prompt, "Adopted optimized prompt because CER improved and at least one stability metric improved."
+
+        score_gap = abs(final_eval.mean_total_score - baseline_eval.mean_total_score)
+        if score_gap <= tie_margin:
+            shorter = final_prompt if len(final_prompt.text) < len(baseline_prompt.text) else baseline_prompt
+            return shorter, "Scores were effectively tied, so the shorter prompt was adopted."
+
+        return baseline_prompt, "Rejected optimized prompt because it did not satisfy the PRD adoption rules on validation."
 
     def _evaluate_candidates(
         self,
