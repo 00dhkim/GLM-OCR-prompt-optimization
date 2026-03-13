@@ -44,7 +44,7 @@
 
 OCR task model은 **GLM-OCR 로컬 서빙**으로 한다. 배포는 vLLM 공식 예시를 따른다. Hugging Face README는 `vllm serve zai-org/GLM-OCR --allowed-local-media-path / --port 8080` 예시를 제공하며, vLLM recipes 문서는 MTP speculative decoding도 지원한다고 안내한다. 다만 GTX 1660 Super 환경에서는 속도와 안정성을 우선해야 하므로, **이번 PRD에서는 speculative decoding 최적화는 제외**하고 기본 서빙으로 시작한다. ([Hugging Face][1])
 
-optimizer 및 meta-prompting용 LLM은 **gpt-5-nano**로 한다. OpenAI 공식 가격 문서는 gpt-5-nano의 Batch API 기준 입력 $0.05/1M tokens, 출력 $0.40/1M tokens라고 안내한다. 따라서 소규모 샘플셋에 대해 프롬프트 생성·오류 요약·후보 리라이팅에만 사용하면 총 비용을 1만원 이하로 충분히 억제할 수 있다. ([OpenAI Developers][4])
+optimizer 및 meta-prompting용 LLM은 **gpt-5-nano**로 한다. OpenAI 공식 가격 문서는 gpt-5-nano의 Batch API 기준 입력 $0.05/1M tokens, 출력 $0.40/1M tokens라고 안내한다. 따라서 소규모 샘플셋에 대해 프롬프트 생성·오류 요약·후보 리라이팅에만 사용하면 총 비용을 1만원 이하로 충분히 억제할 수 있다. reasoning effort는 가능한 최소로 한다. ([OpenAI Developers][4])
 
 ## 6. 프롬프트 최적화 범위
 

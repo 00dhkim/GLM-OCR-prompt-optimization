@@ -208,6 +208,8 @@ cython_debug/
 /runs/
 /data/manifests/korie-ocr/one.jsonl
 /data/manifests/korie-ocr-smoke/
+/EXPERIMENT_REPORT.md
+/report-assets/
 
 # Marimo
 marimo/_static/
