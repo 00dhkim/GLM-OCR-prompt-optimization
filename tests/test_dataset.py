@@ -3,6 +3,7 @@ from pathlib import Path
 from glm_ocr_prompt_optimization.dataset import (
     _cord_ground_truth_to_text,
     _infer_extension_from_url,
+    _resolve_manifest_path,
     build_korie_ocr_manifest,
     load_manifest,
 )
@@ -78,3 +79,13 @@ def test_infer_extension_from_url_uses_known_suffix() -> None:
 
 def test_infer_extension_from_url_handles_encoded_filename() -> None:
     assert _infer_extension_from_url("https://example.com/a%20b/sample.JPEG") == ".jpeg"
+
+
+def test_resolve_manifest_path_falls_back_to_repo_relative_path(tmp_path: Path) -> None:
+    repo_relative = tmp_path / "external" / "sample.jpg"
+    repo_relative.parent.mkdir(parents=True)
+    repo_relative.write_bytes(b"fake")
+
+    resolved = _resolve_manifest_path(tmp_path / "manifests", str(repo_relative.relative_to(tmp_path)))
+
+    assert resolved == repo_relative.relative_to(tmp_path)

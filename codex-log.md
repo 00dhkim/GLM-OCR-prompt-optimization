@@ -85,3 +85,13 @@
 - 확인 결과: `labels/*.txt`는 클래스 id와 bbox 좌표만 포함하며, 박스별 transcription은 포함하지 않음.
 - 판단: 현재 공개 detection split만으로는 full-page OCR reference text를 재구성하지 않음.
 - 이유: 좌표 정보만으로는 plain text GT를 만들 수 없고, 이는 사용자가 허용한 느슨한 공백/줄바꿈 평가와는 다른 문제이기 때문. 텍스트 전사 자체가 없음.
+
+- 다른 Codex가 내려받은 `korean-ocr-img-text-pair` split를 현재 loader에 연결하는 과정에서 경로 규칙 충돌이 발생함.
+- 확인 결과: `prepare-split` 결과 manifest 일부가 manifest-relative 경로가 아니라 repo-root-relative 경로를 포함하고 있었고, 기존 `load_manifest`는 이를 무조건 manifest 디렉터리에 붙여 잘못된 경로를 만들었음.
+- 판단: `load_manifest`에서 `manifest-relative 경로가 존재하면 우선 사용, 아니면 원래 상대경로를 그대로 사용`하는 보정 로직을 추가함.
+- 이유: 기존 KORIE/기타 manifest와의 호환성을 깨지 않으면서, 이미 생성된 split manifest도 다시 쓸 수 있게 하는 편이 더 실용적이기 때문.
+
+- `AbdullahRian/Korean.OCR.Img.text.pair` 실험 규모 판단: 60/40 full split로 `run-all`을 시도했으나 샘플 1건 OCR에 약 50초가 걸려 현실적으로 너무 느렸음.
+- 고려한 선택지: full split 강행 / OCR client 추가 축소 / mini benchmark 별도 생성.
+- 판단: 가장 짧은 line 이미지 위주로 `dev 2 / val 2` mini benchmark를 별도 생성해 경로만 먼저 검증함.
+- 결과: seed 최적 prompt는 `P1`, 1라운드 2후보 최적화 후 mini validation에서 baseline과 optimized가 동률(CER 0.3409)로 나옴.

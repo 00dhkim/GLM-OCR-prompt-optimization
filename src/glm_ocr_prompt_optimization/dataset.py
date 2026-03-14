@@ -24,7 +24,7 @@ def load_manifest(path: Path) -> list[DatasetItem]:
             payload = json.loads(line)
             try:
                 sample_id = payload["id"]
-                image_path = base_dir / payload["image_path"]
+                image_path = _resolve_manifest_path(base_dir, payload["image_path"])
                 reference_text = payload["reference_text"]
             except KeyError as exc:
                 raise ValueError(f"Manifest parse error at line {line_number}: missing {exc}") from exc
@@ -338,3 +338,15 @@ def _write_manifest(path: Path, items: list[DatasetItem]) -> None:
                 "metadata": item.metadata,
             }
             handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
+def _resolve_manifest_path(base_dir: Path, image_path_value: str) -> Path:
+    candidate = Path(image_path_value)
+    if candidate.is_absolute():
+        return candidate
+
+    manifest_relative = base_dir / candidate
+    if manifest_relative.exists():
+        return manifest_relative
+
+    return candidate
