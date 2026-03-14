@@ -26,7 +26,20 @@
 - 이 실험은 전체 영수증 이미지에서 프롬프트가 어떻게 작동하는지 보려는 것이다.
 - sample 수는 작지만, 방향성이 KORIE crop과 달라지는지 확인하는 데는 충분했다.
 
-## 3. seed 프롬프트 비교
+## 3. 데이터셋 대표 샘플 2개
+
+### 샘플 1: `CORD_validation_0008`
+
+![CORD sample 1](./assets/002/sample_1_CORD_validation_0008.jpg)
+
+### 샘플 2: `CORD_validation_0006`
+
+![CORD sample 2](./assets/002/sample_2_CORD_validation_0006.jpg)
+
+이 섹션의 뜻:
+- 실제 영수증 이미지를 보고, 이후 표에 나오는 OCR 결과가 어떤 장면에서 나온 건지 바로 연결해서 볼 수 있다.
+
+## 4. seed 프롬프트 비교
 
 ![CORD seed chart](./assets/002/seed.png)
 
@@ -41,7 +54,7 @@
 - seed 단계에서는 `P3`가 가장 좋았다.
 - 즉, full receipt에서는 더 강한 제약형 프롬프트가 baseline보다 유리했다.
 
-## 4. optimizer iteration 변화
+## 5. optimizer iteration 변화
 
 ![CORD iteration chart](./assets/002/iterations.png)
 
@@ -55,7 +68,7 @@
 - optimizer가 round를 거치면서 CER를 계속 낮췄다.
 - 마지막 winner는 `Prompt E`였고, 이게 검증셋 final prompt로 넘어갔다.
 
-## 5. 검증셋 결과
+## 6. 검증셋 결과
 
 ![CORD validation chart](./assets/002/validation.png)
 
@@ -69,7 +82,103 @@
 - 특히 CER가 `0.77029 -> 0.44549`로 크게 줄었다.
 - 이건 사용자의 가설, 즉 `전체 영수증에서는 결과가 다를 수 있다`를 지지한다.
 
-## 6. 그런데 왜 자동 채택은 baseline인가
+## 7. 사람이 직접 비교할 수 있는 성공 사례 2개
+
+### 성공 사례 1: `CORD_validation_0008`
+
+![Success sample 1](./assets/002/sample_1_CORD_validation_0008.jpg)
+
+- CER 변화: `2.20280 -> 0.03497`
+
+**Reference**
+
+```text
+3X
+@6500
+TALAM UNGU
+19,500
+DISC ITEM -40.000% AMOUNT -7,800
+1X
+@0
+MIKA KECIL
+0
+4.00xITEMs
+SUBTOTAL 11,700
+TOTAL 11,700
+CASH 20,000
+CHANGE 8,300
+```
+
+**Baseline OCR**
+
+```text
+<table><tr><td>3X</td><td>@6500</td></tr><tr><td>TALAM UNGU</td><td>19,500</td></tr><tr><td>DISC ITEM</td><td>-40.000%</td></tr><tr><td>AMOUNT</td><td>-7,800</td></tr><tr><td>1X</td><td>@0</td></tr><tr><td>MIKA KECIL</td><td>0</td></tr><tr><td colspan="2">4.00xITEMs</td></tr><tr><td>SUBTOTAL</td><td>11,700</td></tr><tr><td>TOTAL</td><td>11,700</td></tr><tr><td>CASH</td><td>20,000</td></tr><tr><td>CHANGE</td><td>8,300</td></tr></table>
+```
+
+**Optimized OCR**
+
+```text
+3X @6500
+TALAM UNGU 19,500
+DISC ITEM -40.000%
+AMOUNT -7,800
+1X @0
+MIKA KECIL 0
+4.00xITEMs
+SUBTOTAL 11,700
+TOTAL 11,700
+CASH 20,000
+CHANGE 8,300
+```
+
+이 사례의 뜻:
+- baseline은 일부 핵심 줄이나 구조를 놓쳤다.
+- optimized prompt는 더 많은 줄을 읽고, 영수증 구조를 더 잘 보존했다.
+
+### 성공 사례 2: `CORD_validation_0006`
+
+![Success sample 2](./assets/002/sample_2_CORD_validation_0006.jpg)
+
+- CER 변화: `0.78689 -> 0.12295`
+
+**Reference**
+
+```text
+POTATO SAUSAGE BREAD
+1
+19,000
+OREO GREEN TEA SPREAD
+1
+52,000
+WHITE CHOCO BANANA SPREAD
+52,000
+1
+TOTAL 123,000
+CARD 123,000
+```
+
+**Baseline OCR**
+
+```text
+TOTAL 123,000
+CARD 123,000
+```
+
+**Optimized OCR**
+
+```text
+1 POTATO SAUSAGE BREAD 19,000
+1 OREO GREEN TEA SPREAD 52,000
+1 WHITE CHOCO BANANA SPREAD 52,000
+TOTAL 123,000
+CARD 123,000
+```
+
+이 사례의 뜻:
+- baseline은 일부 핵심 줄이나 구조를 놓쳤다.
+- optimized prompt는 더 많은 줄을 읽고, 영수증 구조를 더 잘 보존했다.
+
+## 8. 그런데 왜 자동 채택은 baseline인가
 
 - adopted prompt: `baseline`
 - adopted reason: Rejected optimized prompt because it did not satisfy the PRD adoption rules on validation.
@@ -80,7 +189,7 @@
 - 그래서 현재 코드 규칙상 자동 채택은 baseline으로 남았다.
 - 하지만 사람 해석 기준으로는 `optimized final을 유력 후보`로 보는 것이 더 자연스럽다.
 
-## 7. 최종 프롬프트 원문
+## 9. 최종 프롬프트 원문
 
 ### Baseline
 
@@ -94,7 +203,7 @@ Text Recognition:
 Text Recognition: Provide a plain transcription of the shown text in Korean-centric format. Do not translate. Do not alter uncertain glyphs. Avoid repeating the same content. If unsure, output only the portion within the visible region.
 ```
 
-## 8. KORIE crop과 CORD full receipt를 같이 보면
+## 10. KORIE crop과 CORD full receipt를 같이 보면
 
 | 데이터셋 | 결과 | 해석 |
 |---|---|---|

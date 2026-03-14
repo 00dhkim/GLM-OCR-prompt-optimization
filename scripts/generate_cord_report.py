@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import shutil
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -17,6 +18,16 @@ REPORT_PATH = DOCS_DIR / "002_cord_v2_full_receipt_report.md"
 def read_csv(path: Path) -> list[dict[str, str]]:
     with path.open("r", encoding="utf-8") as handle:
         return list(csv.DictReader(handle))
+
+
+def read_jsonl(path: Path) -> list[dict]:
+    rows = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if line:
+                rows.append(json.loads(line))
+    return rows
 
 
 def save_seed_chart(seed_rows: list[dict[str, str]]) -> Path:
@@ -106,12 +117,20 @@ def parse_rounds(rows: list[dict[str, str]]) -> list[dict]:
     return parsed
 
 
+def copy_sample_image(source: Path, target_name: str) -> Path:
+    target = ASSET_DIR / target_name
+    shutil.copyfile(source, target)
+    return target
+
+
 def main() -> None:
     ASSET_DIR.mkdir(parents=True, exist_ok=True)
     seed_rows = read_csv(RUN_ROOT / "seed" / "seed_aggregate.csv")
     opt_rows = read_csv(RUN_ROOT / "optimize" / "optimization_aggregate.csv")
     val_rows = read_csv(RUN_ROOT / "validation" / "validation_aggregate.csv")
     report = json.loads((RUN_ROOT / "final_report.json").read_text(encoding="utf-8"))
+    baseline_eval = {row["sample_id"]: row for row in read_jsonl(RUN_ROOT / "validation" / "baseline" / "evaluations.jsonl")}
+    final_eval = {row["sample_id"]: row for row in read_jsonl(RUN_ROOT / "validation" / "final" / "evaluations.jsonl")}
     rounds = parse_rounds(opt_rows)
 
     seed_chart = save_seed_chart(seed_rows)
@@ -122,6 +141,19 @@ def main() -> None:
     final = report["final"]
     adopted = report["adopted_prompt"]
     final_prompt = (RUN_ROOT / "optimize" / "final_prompt.txt").read_text(encoding="utf-8").strip()
+    improvements = []
+    for sample_id, baseline_row in baseline_eval.items():
+        final_row = final_eval[sample_id]
+        delta = final_row["cer"] - baseline_row["cer"]
+        if delta < 0:
+            improvements.append((delta, sample_id, baseline_row, final_row))
+    improvements.sort(key=lambda item: item[0])
+    selected_examples = improvements[:2]
+    copied_samples = []
+    for index, (_, sample_id, baseline_row, _) in enumerate(selected_examples, start=1):
+        source = Path(baseline_row["image_path"])
+        copied = copy_sample_image(source, f"sample_{index}_{sample_id}.jpg")
+        copied_samples.append(copied)
 
     lines = [
         "# CORD v2 Full-Receipt OCR Prompt Optimization Report",
@@ -148,13 +180,26 @@ def main() -> None:
         "| 검증셋 | 12 |",
         "| 목적 | full receipt에서 prompt 반응 확인 |",
         "",
-        "이 표의 뜻:",
-        "- 이 실험은 전체 영수증 이미지에서 프롬프트가 어떻게 작동하는지 보려는 것이다.",
-        "- sample 수는 작지만, 방향성이 KORIE crop과 달라지는지 확인하는 데는 충분했다.",
-        "",
-        "## 3. seed 프롬프트 비교",
-        "",
-        f"![CORD seed chart](./{seed_chart.relative_to(DOCS_DIR).as_posix()})",
+            "이 표의 뜻:",
+            "- 이 실험은 전체 영수증 이미지에서 프롬프트가 어떻게 작동하는지 보려는 것이다.",
+            "- sample 수는 작지만, 방향성이 KORIE crop과 달라지는지 확인하는 데는 충분했다.",
+            "",
+            "## 3. 데이터셋 대표 샘플 2개",
+            "",
+            f"### 샘플 1: `{selected_examples[0][1]}`",
+            "",
+            f"![CORD sample 1](./{copied_samples[0].relative_to(DOCS_DIR).as_posix()})",
+            "",
+            f"### 샘플 2: `{selected_examples[1][1]}`",
+            "",
+            f"![CORD sample 2](./{copied_samples[1].relative_to(DOCS_DIR).as_posix()})",
+            "",
+            "이 섹션의 뜻:",
+            "- 실제 영수증 이미지를 보고, 이후 표에 나오는 OCR 결과가 어떤 장면에서 나온 건지 바로 연결해서 볼 수 있다.",
+            "",
+            "## 4. seed 프롬프트 비교",
+            "",
+            f"![CORD seed chart](./{seed_chart.relative_to(DOCS_DIR).as_posix()})",
         "",
         "| Prompt | Mean CER | Total Score |",
         "|---|---:|---:|",
@@ -170,7 +215,7 @@ def main() -> None:
             "- seed 단계에서는 `P3`가 가장 좋았다.",
             "- 즉, full receipt에서는 더 강한 제약형 프롬프트가 baseline보다 유리했다.",
             "",
-            "## 4. optimizer iteration 변화",
+            "## 5. optimizer iteration 변화",
             "",
             f"![CORD iteration chart](./{iteration_chart.relative_to(DOCS_DIR).as_posix()})",
             "",
@@ -192,7 +237,7 @@ def main() -> None:
             "- optimizer가 round를 거치면서 CER를 계속 낮췄다.",
             "- 마지막 winner는 `Prompt E`였고, 이게 검증셋 final prompt로 넘어갔다.",
             "",
-            "## 5. 검증셋 결과",
+            "## 6. 검증셋 결과",
             "",
             f"![CORD validation chart](./{validation_chart.relative_to(DOCS_DIR).as_posix()})",
             "",
@@ -206,7 +251,48 @@ def main() -> None:
             "- 특히 CER가 `0.77029 -> 0.44549`로 크게 줄었다.",
             "- 이건 사용자의 가설, 즉 `전체 영수증에서는 결과가 다를 수 있다`를 지지한다.",
             "",
-            "## 6. 그런데 왜 자동 채택은 baseline인가",
+            "## 7. 사람이 직접 비교할 수 있는 성공 사례 2개",
+            "",
+        ]
+    )
+
+    for index, (delta, sample_id, baseline_row, final_row) in enumerate(selected_examples, start=1):
+        lines.extend(
+            [
+                f"### 성공 사례 {index}: `{sample_id}`",
+                "",
+                f"![Success sample {index}](./{copied_samples[index - 1].relative_to(DOCS_DIR).as_posix()})",
+                "",
+                f"- CER 변화: `{baseline_row['cer']:.5f} -> {final_row['cer']:.5f}`",
+                "",
+                "**Reference**",
+                "",
+                "```text",
+                baseline_row["reference_text"],
+                "```",
+                "",
+                "**Baseline OCR**",
+                "",
+                "```text",
+                baseline_row["predicted_text"],
+                "```",
+                "",
+                "**Optimized OCR**",
+                "",
+                "```text",
+                final_row["predicted_text"],
+                "```",
+                "",
+                "이 사례의 뜻:",
+                "- baseline은 일부 핵심 줄이나 구조를 놓쳤다.",
+                "- optimized prompt는 더 많은 줄을 읽고, 영수증 구조를 더 잘 보존했다.",
+                "",
+            ]
+        )
+
+    lines.extend(
+        [
+            "## 8. 그런데 왜 자동 채택은 baseline인가",
             "",
             f"- adopted prompt: `{adopted['name']}`",
             f"- adopted reason: {adopted['reason']}",
@@ -217,7 +303,7 @@ def main() -> None:
             "- 그래서 현재 코드 규칙상 자동 채택은 baseline으로 남았다.",
             "- 하지만 사람 해석 기준으로는 `optimized final을 유력 후보`로 보는 것이 더 자연스럽다.",
             "",
-            "## 7. 최종 프롬프트 원문",
+            "## 9. 최종 프롬프트 원문",
             "",
             "### Baseline",
             "",
@@ -231,7 +317,7 @@ def main() -> None:
             final_prompt,
             "```",
             "",
-            "## 8. KORIE crop과 CORD full receipt를 같이 보면",
+            "## 10. KORIE crop과 CORD full receipt를 같이 보면",
             "",
             "| 데이터셋 | 결과 | 해석 |",
             "|---|---|---|",
