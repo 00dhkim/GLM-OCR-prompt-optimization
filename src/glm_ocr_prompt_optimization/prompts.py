@@ -8,29 +8,29 @@ def default_seed_prompts() -> list[PromptCandidate]:
         PromptCandidate(name="P0", text="Text Recognition:", rationale="Baseline prompt."),
         PromptCandidate(
             name="P1",
-            text="Text Recognition:\n보이는 글자를 한국어 중심으로 그대로 전사하라.",
-            rationale="Adds explicit Korean transcription guidance.",
+            text="Text Recognition:\nTranscribe all visible text exactly as it appears.",
+            rationale="Adds a short exact-transcription rule in English.",
         ),
         PromptCandidate(
             name="P2",
             text=(
                 "Text Recognition:\n"
-                "보이는 글자를 그대로 전사하라.\n"
-                "번역하지 마라.\n"
-                "추정해서 보정하지 마라."
+                "Transcribe only the visible text.\n"
+                "Output plain text only.\n"
+                "Do not translate, correct, or guess."
             ),
-            rationale="Adds no-translation and no-guess constraints.",
+            rationale="Adds explicit no-translation, no-correction, and no-guess rules.",
         ),
         PromptCandidate(
             name="P3",
             text=(
                 "Text Recognition:\n"
-                "보이는 글자를 한국어 중심으로 그대로 전사하라.\n"
-                "번역하지 마라.\n"
-                "확실하지 않은 글자도 임의 보정하지 마라.\n"
-                "같은 문자열을 반복 생성하지 마라.\n"
-                "인식이 어려우면 반복하지 말고 보이는 범위까지만 출력하라."
+                "Read the image and transcribe only the visible text in plain text.\n"
+                "Preserve the observed reading order and line breaks when clear.\n"
+                "Do not translate, explain, normalize, or guess missing characters.\n"
+                "If part of the text is unclear, keep only the visible portion.\n"
+                "Do not repeat text."
             ),
-            rationale="Adds conservative uncertainty handling and repetition suppression.",
+            rationale="Adds reading-order, uncertainty, and repetition control in English.",
         ),
     ]

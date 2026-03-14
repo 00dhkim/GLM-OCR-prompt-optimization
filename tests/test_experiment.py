@@ -7,9 +7,9 @@ from glm_ocr_prompt_optimization.models import AggregateEvaluation, EvaluationRe
 
 class FakeOCRClient:
     def recognize_text(self, *, image_path: Path, prompt: str) -> str:
-        if "반복" in prompt:
+        if "Do not repeat" in prompt:
             return "반복 반복 반복 반복 반복 반복 반복 반복 반복 반복"
-        if "한국어 중심" in prompt:
+        if "Do not translate" in prompt or "Transcribe all visible text exactly as it appears" in prompt:
             return "스타벅스 아메리카노 4500"
         return "漢字 abc"
 
@@ -17,8 +17,11 @@ class FakeOCRClient:
 class FakeOptimizer:
     def generate_candidates(self, **kwargs):
         return [
-            PromptCandidate(name="R1", text="Text Recognition:\n보이는 글자를 한국어 중심으로 그대로 전사하라."),
-            PromptCandidate(name="R2", text="Text Recognition:\n같은 문자열을 반복 생성하지 마라."),
+            PromptCandidate(
+                name="R1",
+                text="Text Recognition:\nTranscribe all visible text exactly as it appears.\nDo not translate or guess.",
+            ),
+            PromptCandidate(name="R2", text="Text Recognition:\nDo not repeat text."),
         ]
 
 
@@ -80,7 +83,7 @@ def test_optimize_writes_final_prompt(tmp_path: Path) -> None:
         candidates_per_round=2,
     )
 
-    assert "한국어 중심" in final_prompt.text
+    assert "Do not translate" in final_prompt.text
     assert (tmp_path / "optimize" / "final_prompt.txt").exists()
 
 
