@@ -211,6 +211,8 @@ cython_debug/
 /data/manifests/cord-v2-full/
 /data/manifests/cord-v2-mini/
 /data/manifests/cord-v2-smoke/
+/data/manifests/hf-korean-ocr-sample/
+/data/collections/
 /EXPERIMENT_REPORT.md
 /report-assets/
 

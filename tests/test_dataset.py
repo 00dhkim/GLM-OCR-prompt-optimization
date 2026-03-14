@@ -2,6 +2,7 @@ from pathlib import Path
 
 from glm_ocr_prompt_optimization.dataset import (
     _cord_ground_truth_to_text,
+    _infer_extension_from_url,
     build_korie_ocr_manifest,
     load_manifest,
 )
@@ -68,3 +69,12 @@ def test_cord_ground_truth_to_text_sorts_by_line_and_word_position() -> None:
     text = _cord_ground_truth_to_text(ground_truth)
 
     assert text == "Hello World\n123"
+
+
+def test_infer_extension_from_url_uses_known_suffix() -> None:
+    assert _infer_extension_from_url("https://example.com/a/b/sample.png?x=1") == ".png"
+    assert _infer_extension_from_url("https://example.com/no-extension") == ".jpg"
+
+
+def test_infer_extension_from_url_handles_encoded_filename() -> None:
+    assert _infer_extension_from_url("https://example.com/a%20b/sample.JPEG") == ".jpeg"

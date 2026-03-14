@@ -4,7 +4,12 @@ import argparse
 from pathlib import Path
 
 from .config import Settings
-from .dataset import build_cord_v2_manifest, build_korie_ocr_manifest
+from .dataset import (
+    build_cord_v2_manifest,
+    build_hf_image_text_manifest,
+    build_korie_ocr_manifest,
+    download_hf_repo_image_sample,
+)
 from .experiment import ExperimentRunner
 from .models import AggregateEvaluation, PromptCandidate
 
@@ -34,6 +39,22 @@ def build_parser() -> argparse.ArgumentParser:
     cord_parser.add_argument("--train-count", type=int, default=60)
     cord_parser.add_argument("--val-count", type=int, default=100)
     cord_parser.add_argument("--batch-size", type=int, default=20)
+
+    hf_text_parser = subparsers.add_parser("prepare-hf-image-text")
+    hf_text_parser.add_argument("--dataset-id", required=True)
+    hf_text_parser.add_argument("--output-dir", type=Path, required=True)
+    hf_text_parser.add_argument("--split", default="train")
+    hf_text_parser.add_argument("--config", default="default")
+    hf_text_parser.add_argument("--count", type=int, default=20)
+    hf_text_parser.add_argument("--batch-size", type=int, default=20)
+    hf_text_parser.add_argument("--image-field", required=True)
+    hf_text_parser.add_argument("--text-field", required=True)
+    hf_text_parser.add_argument("--sample-prefix", required=True)
+
+    hf_image_parser = subparsers.add_parser("collect-hf-images")
+    hf_image_parser.add_argument("--dataset-id", required=True)
+    hf_image_parser.add_argument("--output-dir", type=Path, required=True)
+    hf_image_parser.add_argument("--limit", type=int, default=20)
 
     seed_parser = subparsers.add_parser("seed-eval")
     seed_parser.add_argument("--manifest", type=Path, required=True)
@@ -118,6 +139,32 @@ def main() -> None:
         )
         print(f"dev={args.output_dir / 'dev.jsonl'} ({len(train_items)} items)")
         print(f"val={args.output_dir / 'val.jsonl'} ({len(val_items)} items)")
+        return
+
+    if args.command == "prepare-hf-image-text":
+        items = build_hf_image_text_manifest(
+            dataset_id=args.dataset_id,
+            output_dir=args.output_dir,
+            split=args.split,
+            config=args.config,
+            count=args.count,
+            batch_size=args.batch_size,
+            image_field=args.image_field,
+            text_field=args.text_field,
+            sample_prefix=args.sample_prefix,
+        )
+        print(f"manifest={args.output_dir / f'{args.split}.jsonl'} ({len(items)} items)")
+        return
+
+    if args.command == "collect-hf-images":
+        paths = download_hf_repo_image_sample(
+            dataset_id=args.dataset_id,
+            output_dir=args.output_dir,
+            limit=args.limit,
+        )
+        print(f"images={len(paths)}")
+        if paths:
+            print(paths[0])
         return
 
     if args.command == "seed-eval":

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -116,6 +117,89 @@ def build_cord_v2_manifest(
     return train_items, validation_items
 
 
+def build_hf_image_text_manifest(
+    *,
+    dataset_id: str,
+    output_dir: Path,
+    split: str = "train",
+    config: str = "default",
+    count: int = 20,
+    batch_size: int = 20,
+    image_field: str,
+    text_field: str,
+    sample_prefix: str,
+) -> list[DatasetItem]:
+    rows = _fetch_hf_rows(
+        dataset_id=dataset_id,
+        config=config,
+        split=split,
+        count=count,
+        batch_size=batch_size,
+    )
+    items: list[DatasetItem] = []
+    image_dir = output_dir / "images" / split
+    image_dir.mkdir(parents=True, exist_ok=True)
+
+    for index, row in enumerate(rows, start=1):
+        row_data = row["row"]
+        image_payload = row_data[image_field]
+        reference_text = row_data[text_field].strip()
+        if not reference_text:
+            continue
+
+        extension = _infer_extension_from_url(image_payload["src"])
+        sample_id = f"{sample_prefix}_{index:04d}"
+        local_image = image_dir / f"{sample_id}{extension}"
+        _download_file(image_payload["src"], local_image)
+        items.append(
+            DatasetItem(
+                sample_id=sample_id,
+                image_path=local_image,
+                reference_text=reference_text,
+                split=split,
+                metadata={
+                    "source": dataset_id,
+                    "hf_config": config,
+                    "hf_split": split,
+                    "image_field": image_field,
+                    "text_field": text_field,
+                },
+            )
+        )
+
+    _write_manifest(output_dir / f"{split}.jsonl", items)
+    return items
+
+
+def download_hf_repo_image_sample(
+    *,
+    dataset_id: str,
+    output_dir: Path,
+    limit: int = 20,
+) -> list[Path]:
+    repo_info = json.loads(_http_get_text(f"https://huggingface.co/api/datasets/{dataset_id}"))
+    candidates = []
+    for sibling in repo_info.get("siblings", []):
+        filename = sibling.get("rfilename", "")
+        suffix = Path(filename).suffix.lower()
+        if suffix not in {".jpg", ".jpeg", ".png", ".webp"}:
+            continue
+        candidates.append(filename)
+
+    selected = sorted(candidates)[:limit]
+    output_dir.mkdir(parents=True, exist_ok=True)
+    downloaded: list[Path] = []
+    for filename in selected:
+        local_path = output_dir / Path(filename).name
+        remote_url = (
+            f"https://huggingface.co/datasets/{dataset_id}/resolve/main/"
+            f"{urllib.parse.quote(filename, safe='/')}"
+        )
+        _download_file(remote_url, local_path)
+        downloaded.append(local_path)
+    return downloaded
+
+
 def _fetch_cord_split(
     *,
     split: str,
@@ -142,6 +226,34 @@ def _fetch_cord_split(
         )
         payload = json.loads(_http_get_text(url))
         items.extend(_cord_rows_to_items(rows=payload["rows"], split=split, output_dir=output_dir))
+        offset += chunk
+    return items[:count]
+
+
+def _fetch_hf_rows(
+    *,
+    dataset_id: str,
+    config: str,
+    split: str,
+    count: int,
+    batch_size: int,
+) -> list[dict]:
+    items: list[dict] = []
+    offset = 0
+    while len(items) < count:
+        chunk = min(batch_size, count - len(items))
+        url = (
+            "https://datasets-server.huggingface.co/rows?"
+            f"dataset={urllib.parse.quote(dataset_id, safe='')}"
+            f"&config={urllib.parse.quote(config, safe='')}"
+            f"&split={urllib.parse.quote(split, safe='')}"
+            f"&offset={offset}&length={chunk}"
+        )
+        payload = json.loads(_http_get_text(url))
+        rows = payload.get("rows", [])
+        if not rows:
+            break
+        items.extend(rows)
         offset += chunk
     return items[:count]
 
@@ -204,6 +316,14 @@ def _download_file(url: str, path: Path) -> None:
         return
     with urllib.request.urlopen(url) as response:
         path.write_bytes(response.read())
+
+
+def _infer_extension_from_url(url: str) -> str:
+    parsed = urllib.parse.urlparse(url)
+    suffix = Path(parsed.path).suffix.lower()
+    if suffix in {".jpg", ".jpeg", ".png", ".webp"}:
+        return suffix
+    return ".jpg"
 
 
 def _write_manifest(path: Path, items: list[DatasetItem]) -> None:
