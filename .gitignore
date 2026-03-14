@@ -213,6 +213,7 @@ cython_debug/
 /data/manifests/cord-v2-smoke/
 /data/manifests/korean-ocr-img-text-pair/
 /data/manifests/korean-ocr-img-text-pair-mini/
+/data/manifests/korean-ocr-img-text-pair-fast/
 /data/manifests/hf-korean-ocr-sample/
 /data/external/
 /data/collections/
