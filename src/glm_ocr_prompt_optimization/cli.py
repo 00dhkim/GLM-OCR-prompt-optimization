@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 
 from .config import Settings
-from .dataset import build_korie_ocr_manifest
+from .dataset import build_cord_v2_manifest, build_korie_ocr_manifest
 from .experiment import ExperimentRunner
 from .models import AggregateEvaluation, PromptCandidate
 
@@ -28,6 +28,12 @@ def build_parser() -> argparse.ArgumentParser:
     korie_parser.add_argument("--dev-count", type=int, default=60)
     korie_parser.add_argument("--val-count", type=int, default=100)
     korie_parser.add_argument("--seed", type=int, default=42)
+
+    cord_parser = subparsers.add_parser("prepare-cord-v2")
+    cord_parser.add_argument("--output-dir", type=Path, required=True)
+    cord_parser.add_argument("--train-count", type=int, default=60)
+    cord_parser.add_argument("--val-count", type=int, default=100)
+    cord_parser.add_argument("--batch-size", type=int, default=20)
 
     seed_parser = subparsers.add_parser("seed-eval")
     seed_parser.add_argument("--manifest", type=Path, required=True)
@@ -101,6 +107,17 @@ def main() -> None:
         print(f"dev={dev_path} ({len(dev_items)} items)")
         print(f"val={val_path} ({len(val_items)} items)")
         print(f"test={test_path}")
+        return
+
+    if args.command == "prepare-cord-v2":
+        train_items, val_items = build_cord_v2_manifest(
+            output_dir=args.output_dir,
+            train_count=args.train_count,
+            validation_count=args.val_count,
+            batch_size=args.batch_size,
+        )
+        print(f"dev={args.output_dir / 'dev.jsonl'} ({len(train_items)} items)")
+        print(f"val={args.output_dir / 'val.jsonl'} ({len(val_items)} items)")
         return
 
     if args.command == "seed-eval":

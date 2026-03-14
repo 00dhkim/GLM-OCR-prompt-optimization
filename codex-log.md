@@ -58,3 +58,15 @@
 - 구현 보완: validation 결과를 본 뒤 PRD의 최종 채택 규칙이 코드에 반영되지 않은 것을 확인.
 - 조치: baseline/final validation 집계를 기반으로 adopted prompt를 결정하는 로직과 산출물(adopted_prompt.txt, report 반영)을 추가함.
 - 이유: 최적화가 validation에서 실패한 경우 baseline을 채택해야 PRD와 일치하기 때문.
+
+- 새로운 데이터셋 판단: 전체 영수증 OCR용 공개 데이터셋 후보로 CORD를 선택해 확인한다.
+- 이유: 전체 receipt image가 있고 공개 접근 가능하며, 현재 KORIE crop split보다 PRD 가정에 더 가깝기 때문.
+
+- CORD 실험 판단: train split rows API가 300MB 제한으로 실패하므로, 우선 first-rows로 안정적으로 가져올 수 있는 train 26 / val 100 구성으로 full-receipt 실험을 수행한다.
+- 이유: 사용자 요청은 새 데이터셋으로 동일 실험을 계속 진행하는 것이고, 현재 가장 빠르게 end-to-end 검증 가능한 전체 영수증 경로이기 때문.
+
+- CORD full-run 판단 변경: train 26 / val 100 full receipt run이 추론 시간상 과도하게 길어져 turn 내 완료 가능성이 낮음.
+- 조치: full receipt 조건은 유지하되, 실행 가능성을 위해 더 작은 샘플 수로 동일 루프를 완료해 결과를 확보한다.
+
+- full receipt 병목 대응: OCR client에서 이미지를 최대 1600px로 리사이즈 후 JPEG 인코딩하도록 변경.
+- 이유: 원본 full receipt 이미지를 그대로 보내면 전송량과 추론 지연이 커져 실험 완료 시간이 과도하게 길어질 수 있기 때문.

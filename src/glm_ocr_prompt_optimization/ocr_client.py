@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import base64
+import io
 import mimetypes
 from pathlib import Path
 
 from openai import OpenAI
+from PIL import Image
 
 
 class OCRClient:
@@ -13,8 +15,7 @@ class OCRClient:
         self._model = model
 
     def recognize_text(self, *, image_path: Path, prompt: str) -> str:
-        mime_type = mimetypes.guess_type(image_path.name)[0] or "image/jpeg"
-        encoded = base64.b64encode(image_path.read_bytes()).decode("ascii")
+        mime_type, encoded = self._encode_image(image_path)
         response = self._client.chat.completions.create(
             model=self._model,
             temperature=0,
@@ -29,3 +30,17 @@ class OCRClient:
             ],
         )
         return (response.choices[0].message.content or "").strip()
+
+    def _encode_image(self, image_path: Path, max_dimension: int = 1600) -> tuple[str, str]:
+        with Image.open(image_path) as image:
+            image = image.convert("RGB")
+            width, height = image.size
+            longest = max(width, height)
+            if longest > max_dimension:
+                scale = max_dimension / longest
+                resized = (max(1, int(width * scale)), max(1, int(height * scale)))
+                image = image.resize(resized)
+            buffer = io.BytesIO()
+            image.save(buffer, format="JPEG", quality=90, optimize=True)
+            encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+        return "image/jpeg", encoded

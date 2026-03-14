@@ -208,6 +208,9 @@ cython_debug/
 /runs/
 /data/manifests/korie-ocr/one.jsonl
 /data/manifests/korie-ocr-smoke/
+/data/manifests/cord-v2-full/
+/data/manifests/cord-v2-mini/
+/data/manifests/cord-v2-smoke/
 /EXPERIMENT_REPORT.md
 /report-assets/
 
