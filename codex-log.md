@@ -76,3 +76,12 @@
 - 고려한 선택지: 영수증 이미지만 우선 수집 / 평가 가능한 텍스트 페어셋 우선 수집 / 둘 다 분리 수집.
 - 판단: 둘 다 분리 수집.
 - 이유: 사용자는 한국어 이미지면 충분하다고 했고, 동시에 OCR 평가에도 쓰길 원했다. 그래서 `이미지 전용 탐색셋`과 `이미지+텍스트 평가셋`을 각각 모으는 편이 목적에 가장 잘 맞는다.
+
+- Arize 기록 누락 원인 조사: 기존 구현은 `https://app.arize.com/api/v1/space/log`로 집계 JSON을 직접 POST하고 있었음.
+- 판단: `Arize AX` 기준 공식 엔드포인트인 `https://api.arize.com/v1/log`와 `Authorization`, `Grpc-Metadata-space_id` 헤더 형식으로 교체함.
+- 이유: 사용자 확인 결과 사용 제품은 Phoenix가 아니라 Arize AX였고, 기존 구현은 실패를 삼켜 실제로는 아무 기록도 남지 않는 상태였음.
+
+- KORIE full receipt 재구성 가능성 재검토: 공개 detection split를 실제로 다운로드해 내부 포맷을 확인함.
+- 확인 결과: `labels/*.txt`는 클래스 id와 bbox 좌표만 포함하며, 박스별 transcription은 포함하지 않음.
+- 판단: 현재 공개 detection split만으로는 full-page OCR reference text를 재구성하지 않음.
+- 이유: 좌표 정보만으로는 plain text GT를 만들 수 없고, 이는 사용자가 허용한 느슨한 공백/줄바꿈 평가와는 다른 문제이기 때문. 텍스트 전사 자체가 없음.
