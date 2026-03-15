@@ -96,6 +96,69 @@ def build_korie_ocr_manifest(
     return items
 
 
+def build_aihub_public_admin_manifest(
+    *,
+    source_dir: Path,
+    output_path: Path,
+    split: str,
+    limit: int | None = None,
+    seed: int = 42,
+) -> list[DatasetItem]:
+    images_root = source_dir / "원천데이터"
+    labels_root = source_dir / "라벨링데이터"
+    if not images_root.exists() or not labels_root.exists():
+        raise ValueError(f"Expected 원천데이터 and 라벨링데이터 under {source_dir}")
+
+    items: list[DatasetItem] = []
+    for label_path in sorted(labels_root.rglob("*.json")):
+        relative_label = label_path.relative_to(labels_root)
+        image_path = images_root / relative_label.with_suffix(".jpg")
+        if not image_path.exists():
+            continue
+
+        payload = json.loads(label_path.read_text(encoding="utf-8"))
+        reference_text = _aihub_public_admin_annotations_to_text(payload.get("annotations", []))
+        if not reference_text:
+            continue
+
+        category_parts = relative_label.parts[:-2]
+        category = "/".join(category_parts) if category_parts else "unknown"
+        year = relative_label.parts[-2] if len(relative_label.parts) >= 2 else "unknown"
+        items.append(
+            DatasetItem(
+                sample_id=label_path.stem,
+                image_path=image_path,
+                reference_text=reference_text,
+                split=split,
+                metadata={
+                    "source": "aihub-public-admin-ocr",
+                    "category": category,
+                    "year": year,
+                    "evaluation_mode": "unordered_characters",
+                },
+            )
+        )
+
+    if limit is not None and len(items) > limit:
+        rng = random.Random(seed)
+        items = rng.sample(items, limit)
+        items.sort(key=lambda item: item.sample_id)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as handle:
+        for item in items:
+            payload = {
+                "id": item.sample_id,
+                "image_path": os.path.relpath(item.image_path, output_path.parent),
+                "reference_text": item.reference_text,
+                "split": item.split,
+                "metadata": item.metadata,
+            }
+            handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+
+    return items
+
+
 def build_cord_v2_manifest(
     *,
     output_dir: Path,
@@ -399,6 +462,64 @@ def _cord_word_position(word: dict) -> tuple[float, float]:
     x = (quad["x1"] + quad["x2"] + quad["x3"] + quad["x4"]) / 4
     y = (quad["y1"] + quad["y2"] + quad["y3"] + quad["y4"]) / 4
     return y, x
+
+
+def _aihub_public_admin_annotations_to_text(annotations: list[dict]) -> str:
+    boxes: list[dict[str, float | str]] = []
+    for annotation in annotations:
+        text = str(annotation.get("annotation.text", "")).strip()
+        bbox = annotation.get("annotation.bbox")
+        if not text or not isinstance(bbox, list) or len(bbox) != 4:
+            continue
+
+        x, y, width, height = bbox
+        boxes.append(
+            {
+                "text": text,
+                "x1": float(x),
+                "y1": float(y),
+                "x2": float(x + width),
+                "height": float(height),
+                "width": float(width),
+            }
+        )
+
+    if not boxes:
+        return ""
+
+    boxes.sort(key=lambda box: (float(box["y1"]), float(box["x1"])))
+    lines: list[list[dict[str, float | str]]] = []
+    for box in boxes:
+        if not lines:
+            lines.append([box])
+            continue
+
+        current_line = lines[-1]
+        avg_y = sum(float(item["y1"]) for item in current_line) / len(current_line)
+        avg_height = sum(float(item["height"]) for item in current_line) / len(current_line)
+        if abs(float(box["y1"]) - avg_y) <= max(12.0, avg_height * 0.6):
+            current_line.append(box)
+        else:
+            lines.append([box])
+
+    rendered_lines: list[str] = []
+    for line in lines:
+        ordered = sorted(line, key=lambda item: float(item["x1"]))
+        pieces: list[str] = []
+        previous_box: dict[str, float | str] | None = None
+        for box in ordered:
+            if previous_box is not None:
+                gap = float(box["x1"]) - float(previous_box["x2"])
+                reference_size = min(float(previous_box["height"]), float(box["width"]))
+                if gap > max(8.0, reference_size * 0.45):
+                    pieces.append(" ")
+            pieces.append(str(box["text"]))
+            previous_box = box
+        line_text = "".join(pieces).strip()
+        if line_text:
+            rendered_lines.append(line_text)
+
+    return "\n".join(rendered_lines)
 
 
 def _http_get_text(url: str) -> str:

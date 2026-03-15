@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .config import Settings
 from .dataset import (
+    build_aihub_public_admin_manifest,
     build_cord_v2_manifest,
     build_hf_image_text_manifest,
     build_korie_ocr_manifest,
@@ -59,6 +60,13 @@ def build_parser() -> argparse.ArgumentParser:
     hf_image_parser.add_argument("--dataset-id", required=True)
     hf_image_parser.add_argument("--output-dir", type=Path, required=True)
     hf_image_parser.add_argument("--limit", type=int, default=20)
+
+    aihub_parser = subparsers.add_parser("prepare-aihub-public-admin")
+    aihub_parser.add_argument("--source-dir", type=Path, required=True)
+    aihub_parser.add_argument("--output-path", type=Path, required=True)
+    aihub_parser.add_argument("--split", default="train")
+    aihub_parser.add_argument("--limit", type=int)
+    aihub_parser.add_argument("--seed", type=int, default=42)
 
     benchmark_parser = subparsers.add_parser("prepare-heldout-benchmark")
     benchmark_parser.add_argument("--source-manifest", type=Path, action="append", required=True)
@@ -179,6 +187,17 @@ def main() -> None:
         print(f"images={len(paths)}")
         if paths:
             print(paths[0])
+        return
+
+    if args.command == "prepare-aihub-public-admin":
+        items = build_aihub_public_admin_manifest(
+            source_dir=args.source_dir,
+            output_path=args.output_path,
+            split=args.split,
+            limit=args.limit,
+            seed=args.seed,
+        )
+        print(f"manifest={args.output_path} ({len(items)} items)")
         return
 
     if args.command == "prepare-heldout-benchmark":

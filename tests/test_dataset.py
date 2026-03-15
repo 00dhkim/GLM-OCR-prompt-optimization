@@ -4,9 +4,11 @@ from pathlib import Path
 import pytest
 
 from glm_ocr_prompt_optimization.dataset import (
+    _aihub_public_admin_annotations_to_text,
     _cord_ground_truth_to_text,
     _infer_extension_from_url,
     _resolve_manifest_path,
+    build_aihub_public_admin_manifest,
     build_korie_ocr_manifest,
     filter_items_for_benchmark,
     load_manifest,
@@ -56,6 +58,57 @@ def test_build_korie_ocr_manifest_creates_jsonl(tmp_path: Path) -> None:
     assert loaded[0].sample_id == "IMG00001_Total"
     assert loaded[0].reference_text == "12,000"
     assert loaded[0].metadata == {"category": "Total"}
+
+
+def test_build_aihub_public_admin_manifest_creates_jsonl(tmp_path: Path) -> None:
+    source_dir = tmp_path / "aihub"
+    image_dir = source_dir / "원천데이터" / "인.허가" / "5350109" / "1994"
+    label_dir = source_dir / "라벨링데이터" / "인.허가" / "5350109" / "1994"
+    image_dir.mkdir(parents=True)
+    label_dir.mkdir(parents=True)
+    image_path = image_dir / "5350109-1994-0001-0001.jpg"
+    image_path.write_bytes(b"fake")
+    (label_dir / "5350109-1994-0001-0001.json").write_text(
+        json.dumps(
+            {
+                "annotations": [
+                    {"annotation.text": "김해시", "annotation.bbox": [10, 10, 80, 20]},
+                    {"annotation.text": "청사", "annotation.bbox": [110, 10, 40, 20]},
+                    {"annotation.text": "민원실", "annotation.bbox": [10, 50, 60, 20]},
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    output_path = tmp_path / "manifests" / "train.jsonl"
+    items = build_aihub_public_admin_manifest(
+        source_dir=source_dir,
+        output_path=output_path,
+        split="train",
+        limit=None,
+    )
+
+    assert len(items) == 1
+    loaded = load_manifest(output_path)
+    assert loaded[0].sample_id == "5350109-1994-0001-0001"
+    assert loaded[0].reference_text == "김해시 청사\n민원실"
+    assert loaded[0].metadata["source"] == "aihub-public-admin-ocr"
+    assert loaded[0].metadata["evaluation_mode"] == "unordered_characters"
+
+
+def test_aihub_public_admin_annotations_to_text_orders_lines_and_spacing() -> None:
+    annotations = [
+        {"annotation.text": "청사", "annotation.bbox": [80, 10, 40, 20]},
+        {"annotation.text": "김해시", "annotation.bbox": [10, 10, 50, 20]},
+        {"annotation.text": "민원", "annotation.bbox": [10, 45, 40, 20]},
+        {"annotation.text": "안내", "annotation.bbox": [55, 45, 40, 20]},
+    ]
+
+    text = _aihub_public_admin_annotations_to_text(annotations)
+
+    assert text == "김해시 청사\n민원안내"
 
 
 def test_cord_ground_truth_to_text_sorts_by_line_and_word_position() -> None:
