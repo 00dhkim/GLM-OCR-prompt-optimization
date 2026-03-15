@@ -56,43 +56,77 @@ def _failures() -> list[EvaluationResult]:
     ]
 
 
-def test_build_analysis_payload_prefers_english_context_and_failure_summary() -> None:
-    optimizer = PromptOptimizer(api_key="test", model="gpt-5-nano")
-    failures = _failures()
-    failure_payload = optimizer._failure_payload(failures)
-    failure_summary = optimizer._summarize_failures(failures)
+def test_generate_candidates_uses_prompt_learning_sdk(monkeypatch) -> None:
+    seen = {}
 
-    payload = optimizer._build_analysis_payload(
+    class FakePromptLearningOptimizer:
+        def __init__(self, *args, **kwargs):
+            seen["init"] = kwargs
+
+        def create_annotation(self, **kwargs):
+            seen["annotation"] = kwargs
+            return ["annotation"]
+
+        def optimize(self, **kwargs):
+            seen["optimize"] = kwargs
+            return (
+                "YOUR NEW PROMPT:\n"
+                "Text Recognition:\n"
+                "- Transcribe only the visible text.\n"
+                "- Output plain text only.\n"
+                "- Do not translate.\n"
+                "- Output examples (for reference only; produce exact transcripts for your inputs):\n"
+                "- Example 1: [data sample] -> [transcription]\n"
+                "```markdown"
+            )
+
+    monkeypatch.setattr("glm_ocr_prompt_optimization.optimizer.PromptLearningOptimizer", FakePromptLearningOptimizer)
+
+    optimizer = PromptOptimizer(api_key="test", model="gpt-5-nano")
+    candidates = optimizer.generate_candidates(
         current_prompt=PromptCandidate(name="P0", text="Text Recognition:"),
         aggregate=_aggregate(),
-        failure_summary=failure_summary,
-        failure_payload=failure_payload,
+        failures=_failures(),
+        count=3,
     )
 
-    assert "Analyze why the OCR prompt is underperforming" in payload["task"]
-    assert payload["failure_summary"]["high_chinese_count"] == 1
-    assert payload["failure_summary"]["high_repetition_count"] == 1
-    assert "unexpected Chinese character contamination" in payload["failure_summary"]["common_failure_modes"]
-    assert "Chinese-character substitution" in payload["failure_summary"]["example_warning"]
-
-
-def test_parse_and_rank_candidates_prioritizes_english_and_adds_fallbacks() -> None:
-    optimizer = PromptOptimizer(api_key="test", model="gpt-5-nano")
-    content = """
-    {
-      "candidates": [
-        {"name": "K1", "text": "보이는 글자를 그대로 전사하라.", "rationale": "korean"},
-        {"name": "BAD", "text": "Text Recognition:\\nUse [unclear] for unreadable text.", "rationale": "placeholder"},
-        {"name": "E1", "text": "Text Recognition:\\nTranscribe only the visible text. Do not translate.", "rationale": "english"}
-      ]
-    }
-    """
-
-    candidates = optimizer._parse_and_rank_candidates(content, count=3)
-
     assert len(candidates) == 3
-    assert candidates[0].text.startswith("Text Recognition:")
-    assert "\n" in candidates[0].text
-    assert "Transcribe only the visible text" in candidates[0].text
-    assert all("[unclear]" not in candidate.text.lower() for candidate in candidates)
-    assert any(candidate.name.startswith("ENG-F") for candidate in candidates)
+    assert all("YOUR NEW PROMPT" not in candidate.text for candidate in candidates)
+    assert all("```" not in candidate.text for candidate in candidates)
+    assert all("[data sample]" not in candidate.text for candidate in candidates)
+    assert seen["annotation"]["output_column"] == "predicted_text"
+    assert seen["optimize"]["feedback_columns"] == [
+        "evaluator_correctness",
+        "evaluator_explanation",
+        "error_tags",
+    ]
+    assert optimizer.last_learning_context is not None
+    assert optimizer.last_learning_context["dataset_records"][0]["contains_markdown"] == "false"
+
+
+def test_build_learning_examples_from_failures_extracts_feedback_tags() -> None:
+    optimizer = PromptOptimizer(api_key="test", model="gpt-5-nano")
+    learning_examples = optimizer._build_learning_examples_from_failures(
+        current_prompt=PromptCandidate(name="P0", text="Text Recognition:"),
+        failures=_failures(),
+    )
+
+    assert len(learning_examples) == 2
+    assert learning_examples[0].evaluator_correctness == "fail"
+    assert "script_substitution" in learning_examples[0].error_tags
+    assert "repetition" in learning_examples[1].error_tags
+    assert learning_examples[1].metadata["output_length_ratio"] == "5.50"
+
+
+def test_sanitize_prompt_removes_scaffolding_and_examples() -> None:
+    optimizer = PromptOptimizer(api_key="test", model="gpt-5-nano")
+    sanitized, applied = optimizer._sanitize_prompt(
+        "YOUR NEW PROMPT:\nText Recognition:\n- Output plain text only.\n- Example 1: [data sample] -> [transcription]\n```markdown",
+        "Text Recognition:",
+    )
+
+    assert "YOUR NEW PROMPT" not in sanitized
+    assert "[data sample]" not in sanitized
+    assert "```" not in sanitized
+    assert "remove_scaffolding_header" in applied
+    assert "remove_examples" in applied

@@ -101,6 +101,8 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--dev-manifest", type=Path, required=True)
     run_parser.add_argument("--val-manifest", type=Path, required=True)
     run_parser.add_argument("--output-dir", type=Path, required=True)
+    run_parser.add_argument("--rounds", type=int, default=3)
+    run_parser.add_argument("--candidates-per-round", type=int, default=5)
 
     timing_parser = subparsers.add_parser("summarize-timings")
     timing_parser.add_argument("--run-dir", type=Path, required=True)
@@ -282,6 +284,8 @@ def main() -> None:
             manifest_path=args.dev_manifest,
             output_dir=args.output_dir / "optimize",
             starting_prompt=best_seed,
+            rounds=args.rounds,
+            candidates_per_round=args.candidates_per_round,
         )
         validation_rows = runner.validate(
             manifest_path=args.val_manifest,

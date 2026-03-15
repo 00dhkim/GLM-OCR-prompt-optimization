@@ -27,6 +27,12 @@ class FakeOCRClient:
 
 
 class FakeOptimizer:
+    last_learning_context = {
+        "aggregate_metrics": {"mean_total_score": 0.8, "mean_cer": 0.2},
+        "annotations": ["Keep the prompt short.", "Avoid repetition."],
+        "dataset_records": [{"sample_id": "s1"}],
+    }
+
     def generate_candidates(self, **kwargs):
         return [
             PromptCandidate(
@@ -38,7 +44,15 @@ class FakeOptimizer:
 
 
 class FakeArizeLogger:
+    enabled = False
+
     def log_aggregate(self, aggregate: AggregateEvaluation) -> bool:
+        return True
+
+    def log_prompt_learning_round(self, row) -> bool:
+        return True
+
+    def log_prompt_candidate(self, *, round_index: int, candidate: PromptCandidate, aggregate: AggregateEvaluation) -> bool:
         return True
 
 
@@ -52,6 +66,7 @@ def _build_settings(tmp_path: Path) -> Settings:
         arize_api_key=None,
         arize_space_id=None,
         output_root=tmp_path / "runs",
+        phoenix_base_url=None,
     )
 
 
@@ -102,6 +117,12 @@ def test_optimize_writes_final_prompt(tmp_path: Path) -> None:
     assert (tmp_path / "optimize" / "final_prompt.txt").exists()
     assert (tmp_path / "optimize" / "timing_summary.csv").exists()
     assert (tmp_path / "optimize" / "round_01" / "timings.jsonl").exists()
+    assert (tmp_path / "optimize" / "round_01" / "prompt_learning_examples.jsonl").exists()
+    assert (tmp_path / "optimize" / "round_01" / "round_summary.json").exists()
+    context_path = tmp_path / "optimize" / "round_01" / "prompt_learning_context.json"
+    assert context_path.exists()
+    assert '"annotations": [' in context_path.read_text(encoding="utf-8")
+    assert '"rejected_candidates"' in context_path.read_text(encoding="utf-8")
 
 
 def test_build_report_creates_json(tmp_path: Path) -> None:
@@ -151,6 +172,7 @@ def test_build_report_creates_json(tmp_path: Path) -> None:
     )
 
     assert report_path.exists()
+    assert '"rejected_reason_summary"' in report_path.read_text(encoding="utf-8")
 
 
 def test_select_adopted_prompt_falls_back_to_baseline_when_final_is_worse(tmp_path: Path) -> None:
@@ -270,3 +292,36 @@ def test_select_adopted_prompt_allows_prompts_up_to_1024_chars(tmp_path: Path) -
     )
 
     assert adopted.name == "final"
+
+
+def test_optimize_rejects_scaffolded_candidate_and_keeps_start_prompt(tmp_path: Path) -> None:
+    runner = ExperimentRunner(_build_settings(tmp_path))
+    runner.ocr_client = FakeOCRClient()
+    runner.arize_logger = FakeArizeLogger()
+
+    class RejectingOptimizer:
+        last_learning_context = {}
+
+        def generate_candidates(self, **kwargs):
+            return [
+                PromptCandidate(
+                    name="bad",
+                    text="YOUR NEW PROMPT:\nText Recognition:\n```markdown\nExample 1: [data sample] -> [transcription]",
+                )
+            ]
+
+    runner.optimizer = RejectingOptimizer()
+    manifest = _write_manifest(tmp_path)
+
+    final_prompt = runner.optimize(
+        manifest_path=manifest,
+        output_dir=tmp_path / "optimize_reject",
+        starting_prompt=PromptCandidate(name="START", text="Text Recognition:"),
+        rounds=1,
+        candidates_per_round=1,
+    )
+
+    assert final_prompt.name == "START"
+    summary_path = tmp_path / "optimize_reject" / "round_01" / "round_summary.json"
+    text = summary_path.read_text(encoding="utf-8")
+    assert '"contains_scaffolding"' in text

@@ -22,6 +22,7 @@ def _settings(tmp_path: Path) -> Settings:
         arize_api_key=None,
         arize_space_id=None,
         output_root=tmp_path / "runs",
+        phoenix_base_url=None,
     )
 
 
@@ -109,6 +110,8 @@ def test_run_all_writes_adopted_prompt_and_report(tmp_path: Path, monkeypatch, c
             seen["optimize_manifest"] = manifest_path
             seen["optimize_output_dir"] = output_dir
             seen["starting_prompt"] = starting_prompt
+            seen["rounds"] = rounds
+            seen["candidates_per_round"] = candidates_per_round
             return PromptCandidate(name="final", text="Optimized prompt")
 
         def validate(self, *, manifest_path: Path, output_dir: Path, prompts: list[PromptCandidate]):
@@ -144,6 +147,10 @@ def test_run_all_writes_adopted_prompt_and_report(tmp_path: Path, monkeypatch, c
             str(val_manifest),
             "--output-dir",
             str(tmp_path / "runs" / "smoke"),
+            "--rounds",
+            "1",
+            "--candidates-per-round",
+            "4",
         ],
     )
 
@@ -155,6 +162,8 @@ def test_run_all_writes_adopted_prompt_and_report(tmp_path: Path, monkeypatch, c
     assert adopted_path.read_text(encoding="utf-8") == "Optimized prompt"
     assert report_path.exists()
     assert seen["report_final_evaluations_path"] == tmp_path / "runs" / "smoke" / "validation" / "final" / "evaluations.jsonl"
+    assert seen["rounds"] == 1
+    assert seen["candidates_per_round"] == 4
     assert "final: cer=0.2800" in out
     assert "adopted=final" in out
 
