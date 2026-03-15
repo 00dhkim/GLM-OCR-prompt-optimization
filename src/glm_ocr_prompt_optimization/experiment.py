@@ -155,6 +155,7 @@ class ExperimentRunner:
         starting_prompt: PromptCandidate | None = None,
         rounds: int = 3,
         candidates_per_round: int = 5,
+        candidate_strategy: str = "ocr-rules",
     ) -> PromptCandidate:
         if self.optimizer is None:
             raise RuntimeError("OPENAI_API_KEY is required for optimization.")
@@ -205,6 +206,9 @@ class ExperimentRunner:
                 "evaluator_correctness",
                 "evaluator_explanation",
                 "error_tags",
+                "failure_mode_summary",
+                "suggested_instruction_change",
+                "field_risk",
             ]
             learning_examples = self._build_learning_examples(
                 prompt=current_prompt,
@@ -226,9 +230,10 @@ class ExperimentRunner:
                 learning_examples=learning_examples,
                 feedback_columns=feedback_columns,
                 task_description="Improve the OCR transcription prompt using evaluator feedback, training examples, and compact few-shot guidance.",
+                candidate_strategy=candidate_strategy,
             )
             round_logger.write_prompt_catalog(generated, filename="generated_candidates.jsonl")
-            candidate_aggregates, winner, rejected_candidates = self._evaluate_candidates(
+            candidate_aggregates, winner, rejected_candidates, winner_reason = self._evaluate_candidates(
                 manifest_path=manifest_path,
                 output_dir=round_dir / "candidates",
                 candidates=generated,
@@ -262,6 +267,12 @@ class ExperimentRunner:
                 sanitizer_summary={
                     candidate.name: self._candidate_sanitizers(candidate) for candidate in generated
                 },
+                winner_reason=winner_reason,
+                failure_mode_summary=self._failure_mode_summary(learning_examples),
+                field_breakdown={
+                    "train_numeric_field_cer": aggregate.numeric_field_cer,
+                    "train_non_numeric_field_cer": aggregate.non_numeric_field_cer,
+                },
             )
             round_logger.write_round_summary(round_record)
             round_logger.write_json(
@@ -271,6 +282,8 @@ class ExperimentRunner:
                     "annotations": learning_context.get("annotations", []),
                     "dataset_records": learning_context.get("dataset_records", []),
                     "rejected_candidates": rejected_candidates,
+                    "winner_reason": winner_reason,
+                    "failure_mode_summary": self._failure_mode_summary(learning_examples),
                     "sanitizer_summary": {
                         candidate.name: self._candidate_sanitizers(candidate) for candidate in generated
                     },
@@ -392,6 +405,14 @@ class ExperimentRunner:
             "stability_improvements": {
                 "chinese_rate_delta": baseline.chinese_rate - final.chinese_rate,
                 "repetition_rate_delta": baseline.repetition_rate - final.repetition_rate,
+                "markdown_leakage_rate_delta": baseline.markdown_leakage_rate - final.markdown_leakage_rate,
+                "instruction_echo_rate_delta": baseline.instruction_echo_rate - final.instruction_echo_rate,
+            },
+            "field_breakdown": {
+                "baseline_numeric_field_cer": baseline.numeric_field_cer,
+                "final_numeric_field_cer": final.numeric_field_cer,
+                "baseline_non_numeric_field_cer": baseline.non_numeric_field_cer,
+                "final_non_numeric_field_cer": final.non_numeric_field_cer,
             },
             "adopted_prompt": {
                 "name": adopted_prompt.name,
@@ -417,6 +438,9 @@ class ExperimentRunner:
         if len(final_prompt.text) > max_prompt_length:
             return baseline_prompt, "Rejected optimized prompt because it exceeded the prompt length limit."
 
+        if final_eval.numeric_field_cer > baseline_eval.numeric_field_cer + 0.05:
+            return baseline_prompt, "Rejected optimized prompt because numeric-field CER regressed on validation."
+
         cer_improved = final_eval.mean_cer < baseline_eval.mean_cer
         if cer_improved:
             return final_prompt, "Adopted optimized prompt because CER improved on validation."
@@ -438,11 +462,12 @@ class ExperimentRunner:
         stage: str,
         round_index: int | None = None,
         timing_rows: list[TimingRecord] | None = None,
-    ) -> tuple[list[AggregateEvaluation], PromptCandidate, dict[str, list[str]]]:
+    ) -> tuple[list[AggregateEvaluation], PromptCandidate, dict[str, list[str]], str]:
         aggregate_rows: list[AggregateEvaluation] = []
         rejected_candidates: dict[str, list[str]] = {}
         best_prompt = starting_prompt
         best_score = float("-inf")
+        winner_reason = "No candidate beat the starting prompt after OCR safety checks."
         for prompt in candidates:
             prompt_started_at = time.perf_counter()
             predictions, evaluations, sample_timings = self._evaluate_manifest(
@@ -488,7 +513,12 @@ class ExperimentRunner:
             if self._is_better_prompt(aggregate, prompt, best_score, best_prompt, candidate_score=safety_score):
                 best_score = safety_score
                 best_prompt = prompt
-        return aggregate_rows, best_prompt, rejected_candidates
+                winner_reason = (
+                    f"Selected {prompt.name} with OCR optimization score {safety_score:.4f}; "
+                    f"CER={aggregate.mean_cer:.4f}, repetition={aggregate.repetition_rate:.2%}, "
+                    f"markdown={aggregate.markdown_leakage_rate:.2%}, numeric_field_cer={aggregate.numeric_field_cer:.4f}."
+                )
+        return aggregate_rows, best_prompt, rejected_candidates, winner_reason
 
     def _evaluate_manifest(
         self,
@@ -578,7 +608,7 @@ class ExperimentRunner:
                 -row.cer,
             ),
         )
-        selected = ranked[:6] + sorted(evaluations, key=lambda row: (-row.total_score, row.cer))[:3]
+        selected = ranked[:8] + sorted(evaluations, key=lambda row: (-row.total_score, row.cer))[:4]
         deduped: list[PromptLearningExample] = []
         seen_ids: set[str] = set()
         for row in selected:
@@ -587,6 +617,7 @@ class ExperimentRunner:
             seen_ids.add(row.sample_id)
             correctness = "pass" if row.total_score >= 0.8 and row.cer <= 0.2 else "fail"
             tags = self._learning_error_tags(row)
+            cluster_id = self._failure_cluster_id(row, tags)
             explanation = "Prediction matched the reference closely." if correctness == "pass" else self._learning_explanation(row, tags)
             deduped.append(
                 PromptLearningExample(
@@ -603,9 +634,16 @@ class ExperimentRunner:
                     token_f1=row.token_f1,
                     total_score=row.total_score,
                     split=row.split,
+                    cluster_id=cluster_id,
                     metadata=self._learning_metadata(row),
                 )
             )
+        seen_clusters: set[str] = set()
+        for example in deduped:
+            if example.cluster_id in seen_clusters:
+                continue
+            example.representative = True
+            seen_clusters.add(example.cluster_id)
         return deduped
 
     def _learning_error_tags(self, row: EvaluationResult) -> list[str]:
@@ -625,7 +663,10 @@ class ExperimentRunner:
     def _learning_explanation(self, row: EvaluationResult, tags: list[str]) -> str:
         if not tags:
             return "The prediction needs to adhere more closely to exact visible-text transcription."
-        return "Evaluator feedback: " + ", ".join(tags) + "."
+        return (
+            f"Evaluator feedback for a {self._field_risk(row.reference_text)} field: {', '.join(tags)}. "
+            f"Suggested instruction change: {self._suggested_instruction_change(row, tags)}."
+        )
 
     def _learning_metadata(self, row: EvaluationResult) -> dict[str, str]:
         reference_length = max(len(row.reference_text), 1)
@@ -634,11 +675,14 @@ class ExperimentRunner:
         reference_line_count = max(1, row.reference_text.count("\n") + 1)
         return {
             "output_length_ratio": f"{predicted_length / reference_length:.2f}",
-            "contains_markdown": str("```" in row.predicted_text or "`" in row.predicted_text).lower(),
-            "instruction_echo": str(self._contains_instruction_echo(row.predicted_text)).lower(),
-            "field_type_hint": self._field_type_hint(row.reference_text),
-            "digit_heavy": str(self._digit_ratio(row.reference_text) >= 0.5).lower(),
-            "line_break_error": str(predicted_line_count != reference_line_count).lower(),
+            "contains_markdown": str(row.contains_markdown).lower(),
+            "instruction_echo": str(row.instruction_echo).lower(),
+            "field_type_hint": row.field_type_hint,
+            "digit_heavy": str(row.digit_heavy).lower(),
+            "line_break_error": str(row.line_break_mismatch).lower(),
+            "failure_mode_summary": ", ".join(self._learning_error_tags(row)),
+            "suggested_instruction_change": self._suggested_instruction_change(row, self._learning_error_tags(row)),
+            "field_risk": self._field_risk(row.reference_text),
         }
 
     def _analysis_summary_from_context(self, context: dict[str, object]) -> str:
@@ -669,20 +713,32 @@ class ExperimentRunner:
             reasons.append("contains_markdown_fence")
         if "example 1:" in text or "[data sample]" in text:
             reasons.append("contains_examples")
-        if aggregate.mean_cer >= 5.0:
+        if aggregate.mean_cer >= 1.0:
             reasons.append("mean_cer_too_high")
         if aggregate.repetition_rate > 0.35:
             reasons.append("repetition_rate_too_high")
         if aggregate.chinese_rate > 0.2:
             reasons.append("script_substitution_rate_too_high")
+        if aggregate.markdown_leakage_rate > 0.15:
+            reasons.append("markdown_leakage_rate_too_high")
+        if aggregate.instruction_echo_rate > 0.10:
+            reasons.append("instruction_echo_rate_too_high")
+        if aggregate.numeric_field_cer > 1.5:
+            reasons.append("numeric_field_cer_too_high")
         if aggregate.mean_total_score < 0.0:
             reasons.append("negative_total_score")
         return reasons
 
     def _candidate_safety_score(self, *, prompt: PromptCandidate, aggregate: AggregateEvaluation) -> float:
         length_penalty = len(prompt.text) / 1000.0
-        stability_penalty = aggregate.repetition_rate * 0.5 + aggregate.chinese_rate * 0.5
-        return aggregate.mean_total_score - length_penalty - stability_penalty
+        stability_penalty = (
+            aggregate.repetition_rate * 0.5
+            + aggregate.chinese_rate * 0.5
+            + aggregate.markdown_leakage_rate * 0.5
+            + aggregate.instruction_echo_rate * 0.35
+        )
+        field_penalty = aggregate.numeric_field_cer * 0.1
+        return aggregate.mean_total_score - length_penalty - stability_penalty - field_penalty
 
     def _candidate_sanitizers(self, candidate: PromptCandidate) -> list[str]:
         applied = (candidate.metadata or {}).get("sanitizers_applied", "")
@@ -698,6 +754,45 @@ class ExperimentRunner:
                     counts[reason] = counts.get(reason, 0) + 1
         return counts
 
+    def _failure_cluster_id(self, row: EvaluationResult, tags: list[str]) -> str:
+        if "repetition" in tags:
+            return "repetition"
+        if "script_substitution" in tags:
+            return "script_substitution"
+        if row.digit_heavy or row.field_type_hint == "numeric":
+            return "numeric_over_generation"
+        if row.line_break_mismatch:
+            return "line_break_collapse"
+        if row.contains_markdown or row.instruction_echo:
+            return "markdown_or_echo"
+        return "general"
+
+    def _failure_mode_summary(self, examples: list[PromptLearningExample]) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for example in examples:
+            counts[example.cluster_id] = counts.get(example.cluster_id, 0) + 1
+        return counts
+
+    def _suggested_instruction_change(self, row: EvaluationResult, tags: list[str]) -> str:
+        changes: list[str] = []
+        if "repetition" in tags:
+            changes.append("add an explicit do-not-repeat rule")
+        if "script_substitution" in tags:
+            changes.append("forbid translation and script substitution")
+        if row.contains_markdown or "overlong_output" in tags:
+            changes.append("require plain text only with no markdown or labels")
+        if row.line_break_mismatch:
+            changes.append("preserve visible line breaks and reading order")
+        if row.digit_heavy:
+            changes.append("copy digits and separators exactly without guessing")
+        if not changes:
+            changes.append("tighten exact visible-text transcription")
+        return "; ".join(dict.fromkeys(changes))
+
+    def _field_risk(self, text: str) -> str:
+        hint = self._field_type_hint(text)
+        return hint if hint in {"numeric", "date", "address", "mixed"} else "general"
+
     def _contains_instruction_echo(self, text: str) -> bool:
         lowered = text.lower()
         markers = ["transcribe", "text recognition", "do not include", "output only"]
@@ -706,6 +801,8 @@ class ExperimentRunner:
     def _field_type_hint(self, text: str) -> str:
         if "." in text and any(char.isdigit() for char in text):
             return "date"
+        if any(char.isdigit() for char in text) and any(char.isalpha() for char in text):
+            return "mixed"
         if any(char in text for char in ("동", "로", "길", "번")):
             return "address"
         if self._digit_ratio(text) >= 0.5:
@@ -809,11 +906,18 @@ class ExperimentRunner:
             "penalties": {
                 "chinese_mixed": row.penalties.chinese_mixed,
                 "repetition": row.penalties.repetition,
+                "markdown_leakage": row.penalties.markdown_leakage,
+                "instruction_echo": row.penalties.instruction_echo,
             },
             "predicted_text": row.predicted_text,
             "reference_text": row.reference_text,
             "image_path": str(row.image_path),
             "split": row.split,
+            "contains_markdown": row.contains_markdown,
+            "instruction_echo": row.instruction_echo,
+            "field_type_hint": row.field_type_hint,
+            "digit_heavy": row.digit_heavy,
+            "line_break_mismatch": row.line_break_mismatch,
         }
 
     def _log_arize_many(self, rows: list[AggregateEvaluation]) -> None:
@@ -840,11 +944,18 @@ class ExperimentRunner:
                         penalties=PenaltyBreakdown(
                             chinese_mixed=penalties["chinese_mixed"],
                             repetition=penalties["repetition"],
+                            markdown_leakage=penalties.get("markdown_leakage", 0.0),
+                            instruction_echo=penalties.get("instruction_echo", 0.0),
                         ),
                         predicted_text=payload["predicted_text"],
                         reference_text=payload["reference_text"],
                         image_path=Path(payload["image_path"]),
                         split=payload.get("split"),
+                        contains_markdown=payload.get("contains_markdown", False),
+                        instruction_echo=payload.get("instruction_echo", False),
+                        field_type_hint=payload.get("field_type_hint", "general"),
+                        digit_heavy=payload.get("digit_heavy", False),
+                        line_break_mismatch=payload.get("line_break_mismatch", False),
                     )
                 )
         return rows

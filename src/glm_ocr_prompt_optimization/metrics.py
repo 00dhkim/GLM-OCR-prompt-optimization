@@ -126,10 +126,15 @@ def compute_penalties(
         repeated = max(repeated, _repeated_ngram_count(tokens, n))
     repetition_threshold = 4 if len(tokens) < 20 else 6
     repetition = beta if repeated >= repetition_threshold or _has_suspicious_char_run(predicted_text) else 0.0
+    markdown_leakage = 0.10 if "```" in predicted_text or "`" in predicted_text else 0.0
+    lowered = predicted_text.lower()
+    instruction_echo = 0.08 if any(marker in lowered for marker in ("text recognition", "transcribe", "output plain text only")) else 0.0
 
     return PenaltyBreakdown(
         chinese_mixed=chinese_mixed,
         repetition=repetition,
+        markdown_leakage=markdown_leakage,
+        instruction_echo=instruction_echo,
     )
 
 
@@ -147,6 +152,22 @@ def evaluate_prediction(
 ) -> EvaluationResult:
     metadata = metadata or {}
     evaluation_mode = metadata.get("evaluation_mode", "default")
+    predicted_line_count = max(1, predicted_text.count("\n") + 1)
+    reference_line_count = max(1, reference_text.count("\n") + 1)
+    contains_markdown = "```" in predicted_text or "`" in predicted_text
+    lowered = predicted_text.lower()
+    instruction_echo = any(marker in lowered for marker in ("text recognition", "transcribe", "output plain text only"))
+    reference_digit_ratio = sum(char.isdigit() for char in reference_text) / len(reference_text) if reference_text else 0.0
+    if "." in reference_text and any(char.isdigit() for char in reference_text):
+        field_type_hint = "date"
+    elif any(char in reference_text for char in ("동", "로", "길", "번")):
+        field_type_hint = "address"
+    elif reference_digit_ratio >= 0.5:
+        field_type_hint = "numeric"
+    elif any(char.isdigit() for char in reference_text) and any(char.isalpha() for char in reference_text):
+        field_type_hint = "mixed"
+    else:
+        field_type_hint = "general"
 
     if evaluation_mode == "unordered_characters":
         normalized_reference = normalize_unordered_text(reference_text)
@@ -182,6 +203,11 @@ def evaluate_prediction(
         reference_text=reference_text,
         image_path=image_path,
         split=split,
+        contains_markdown=contains_markdown,
+        instruction_echo=instruction_echo,
+        field_type_hint=field_type_hint,
+        digit_heavy=reference_digit_ratio >= 0.5,
+        line_break_mismatch=predicted_line_count != reference_line_count,
     )
 
 
@@ -191,6 +217,8 @@ def aggregate_evaluations(results: Iterable[EvaluationResult], prompt_text: str)
         raise ValueError("No evaluation rows to aggregate.")
 
     sample_count = len(rows)
+    numeric_rows = [row for row in rows if row.digit_heavy or row.field_type_hint == "numeric"]
+    non_numeric_rows = [row for row in rows if row not in numeric_rows]
     return AggregateEvaluation(
         prompt_name=rows[0].prompt_name,
         prompt_text=prompt_text,
@@ -202,4 +230,9 @@ def aggregate_evaluations(results: Iterable[EvaluationResult], prompt_text: str)
         mean_total_score=sum(row.total_score for row in rows) / sample_count,
         chinese_rate=sum(1 for row in rows if row.penalties.chinese_mixed > 0) / sample_count,
         repetition_rate=sum(1 for row in rows if row.penalties.repetition > 0) / sample_count,
+        markdown_leakage_rate=sum(1 for row in rows if row.contains_markdown) / sample_count,
+        instruction_echo_rate=sum(1 for row in rows if row.instruction_echo) / sample_count,
+        line_break_match_rate=sum(1 for row in rows if not row.line_break_mismatch) / sample_count,
+        numeric_field_cer=sum(row.cer for row in numeric_rows) / len(numeric_rows) if numeric_rows else 0.0,
+        non_numeric_field_cer=sum(row.cer for row in non_numeric_rows) / len(non_numeric_rows) if non_numeric_rows else 0.0,
     )

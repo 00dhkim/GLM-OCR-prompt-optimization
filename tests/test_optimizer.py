@@ -20,6 +20,11 @@ def _aggregate() -> AggregateEvaluation:
         mean_total_score=0.55,
         chinese_rate=0.33,
         repetition_rate=0.33,
+        markdown_leakage_rate=0.0,
+        instruction_echo_rate=0.0,
+        line_break_match_rate=1.0,
+        numeric_field_cer=0.4,
+        non_numeric_field_cer=0.4,
     )
 
 
@@ -90,7 +95,7 @@ def test_generate_candidates_uses_prompt_learning_sdk(monkeypatch) -> None:
         count=3,
     )
 
-    assert len(candidates) == 3
+    assert len(candidates) >= 3
     assert all("YOUR NEW PROMPT" not in candidate.text for candidate in candidates)
     assert all("```" not in candidate.text for candidate in candidates)
     assert all("[data sample]" not in candidate.text for candidate in candidates)
@@ -99,9 +104,13 @@ def test_generate_candidates_uses_prompt_learning_sdk(monkeypatch) -> None:
         "evaluator_correctness",
         "evaluator_explanation",
         "error_tags",
+        "failure_mode_summary",
+        "suggested_instruction_change",
+        "field_risk",
     ]
     assert optimizer.last_learning_context is not None
     assert optimizer.last_learning_context["dataset_records"][0]["contains_markdown"] == "false"
+    assert optimizer.last_learning_context["candidate_strategy"] == "ocr-rules"
 
 
 def test_build_learning_examples_from_failures_extracts_feedback_tags() -> None:
@@ -116,6 +125,7 @@ def test_build_learning_examples_from_failures_extracts_feedback_tags() -> None:
     assert "script_substitution" in learning_examples[0].error_tags
     assert "repetition" in learning_examples[1].error_tags
     assert learning_examples[1].metadata["output_length_ratio"] == "5.50"
+    assert learning_examples[0].metadata["field_risk"] == "general"
 
 
 def test_sanitize_prompt_removes_scaffolding_and_examples() -> None:
@@ -130,3 +140,29 @@ def test_sanitize_prompt_removes_scaffolding_and_examples() -> None:
     assert "```" not in sanitized
     assert "remove_scaffolding_header" in applied
     assert "remove_examples" in applied
+
+
+def test_generate_candidates_rule_strategy_emits_multiple_rule_bundles(monkeypatch) -> None:
+    class FakePromptLearningOptimizer:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def create_annotation(self, **kwargs):
+            return ["Preserve line breaks and stop repetition for numeric fields."]
+
+        def optimize(self, **kwargs):
+            return "Text Recognition:\nOutput plain text only.\nDo not repeat text.\nPreserve line breaks."
+
+    monkeypatch.setattr("glm_ocr_prompt_optimization.optimizer.PromptLearningOptimizer", FakePromptLearningOptimizer)
+
+    optimizer = PromptOptimizer(api_key="test", model="gpt-5-nano")
+    candidates = optimizer.generate_candidates(
+        current_prompt=PromptCandidate(name="P0", text="Text Recognition:\nDo not translate."),
+        aggregate=_aggregate(),
+        failures=_failures(),
+        count=6,
+    )
+
+    assert len(candidates) >= 6
+    assert any("Do not repeat text." in candidate.text for candidate in candidates)
+    assert any("Do not translate" in candidate.text for candidate in candidates)

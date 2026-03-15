@@ -148,6 +148,11 @@ def test_build_report_creates_json(tmp_path: Path) -> None:
         mean_total_score=0.4,
         chinese_rate=0.5,
         repetition_rate=0.5,
+        markdown_leakage_rate=0.0,
+        instruction_echo_rate=0.0,
+        line_break_match_rate=1.0,
+        numeric_field_cer=0.5,
+        non_numeric_field_cer=0.5,
     )
     final = AggregateEvaluation(
         prompt_name="final",
@@ -160,6 +165,11 @@ def test_build_report_creates_json(tmp_path: Path) -> None:
         mean_total_score=0.9,
         chinese_rate=0.0,
         repetition_rate=0.0,
+        markdown_leakage_rate=0.0,
+        instruction_echo_rate=0.0,
+        line_break_match_rate=1.0,
+        numeric_field_cer=0.1,
+        non_numeric_field_cer=0.1,
     )
 
     report_path = runner.build_report(
@@ -190,6 +200,11 @@ def test_select_adopted_prompt_falls_back_to_baseline_when_final_is_worse(tmp_pa
         mean_total_score=0.69,
         chinese_rate=0.01,
         repetition_rate=0.0,
+        markdown_leakage_rate=0.0,
+        instruction_echo_rate=0.0,
+        line_break_match_rate=1.0,
+        numeric_field_cer=0.3,
+        non_numeric_field_cer=0.3,
     )
     final = AggregateEvaluation(
         prompt_name="final",
@@ -202,6 +217,11 @@ def test_select_adopted_prompt_falls_back_to_baseline_when_final_is_worse(tmp_pa
         mean_total_score=0.39,
         chinese_rate=0.0,
         repetition_rate=0.0,
+        markdown_leakage_rate=0.0,
+        instruction_echo_rate=0.0,
+        line_break_match_rate=1.0,
+        numeric_field_cer=0.6,
+        non_numeric_field_cer=0.6,
     )
 
     adopted, reason = runner.select_adopted_prompt(
@@ -230,6 +250,11 @@ def test_select_adopted_prompt_adopts_final_when_cer_improves_even_without_stabi
         mean_total_score=0.72,
         chinese_rate=0.0,
         repetition_rate=0.0,
+        markdown_leakage_rate=0.0,
+        instruction_echo_rate=0.0,
+        line_break_match_rate=1.0,
+        numeric_field_cer=0.3,
+        non_numeric_field_cer=0.3,
     )
     final = AggregateEvaluation(
         prompt_name="final",
@@ -242,6 +267,11 @@ def test_select_adopted_prompt_adopts_final_when_cer_improves_even_without_stabi
         mean_total_score=0.70,
         chinese_rate=0.05,
         repetition_rate=0.05,
+        markdown_leakage_rate=0.0,
+        instruction_echo_rate=0.0,
+        line_break_match_rate=1.0,
+        numeric_field_cer=0.2,
+        non_numeric_field_cer=0.2,
     )
 
     adopted, reason = runner.select_adopted_prompt(
@@ -270,6 +300,11 @@ def test_select_adopted_prompt_allows_prompts_up_to_1024_chars(tmp_path: Path) -
         mean_total_score=0.7,
         chinese_rate=0.0,
         repetition_rate=0.0,
+        markdown_leakage_rate=0.0,
+        instruction_echo_rate=0.0,
+        line_break_match_rate=1.0,
+        numeric_field_cer=0.3,
+        non_numeric_field_cer=0.3,
     )
     final = AggregateEvaluation(
         prompt_name="final",
@@ -282,6 +317,11 @@ def test_select_adopted_prompt_allows_prompts_up_to_1024_chars(tmp_path: Path) -
         mean_total_score=0.8,
         chinese_rate=0.0,
         repetition_rate=0.0,
+        markdown_leakage_rate=0.0,
+        instruction_echo_rate=0.0,
+        line_break_match_rate=1.0,
+        numeric_field_cer=0.2,
+        non_numeric_field_cer=0.2,
     )
 
     adopted, _ = runner.select_adopted_prompt(

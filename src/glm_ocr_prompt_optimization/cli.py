@@ -90,6 +90,7 @@ def build_parser() -> argparse.ArgumentParser:
     optimize_parser.add_argument("--start-prompt-file", type=Path)
     optimize_parser.add_argument("--rounds", type=int, default=3)
     optimize_parser.add_argument("--candidates-per-round", type=int, default=5)
+    optimize_parser.add_argument("--candidate-strategy", choices=["ocr-rules", "legacy"], default="ocr-rules")
 
     validate_parser = subparsers.add_parser("validate")
     validate_parser.add_argument("--manifest", type=Path, required=True)
@@ -103,6 +104,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--output-dir", type=Path, required=True)
     run_parser.add_argument("--rounds", type=int, default=3)
     run_parser.add_argument("--candidates-per-round", type=int, default=5)
+    run_parser.add_argument("--candidate-strategy", choices=["ocr-rules", "legacy"], default="ocr-rules")
 
     timing_parser = subparsers.add_parser("summarize-timings")
     timing_parser.add_argument("--run-dir", type=Path, required=True)
@@ -251,6 +253,7 @@ def main() -> None:
             starting_prompt=start_prompt,
             rounds=args.rounds,
             candidates_per_round=args.candidates_per_round,
+            candidate_strategy=args.candidate_strategy,
         )
         print(final_prompt.text)
         return
@@ -286,6 +289,7 @@ def main() -> None:
             starting_prompt=best_seed,
             rounds=args.rounds,
             candidates_per_round=args.candidates_per_round,
+            candidate_strategy=args.candidate_strategy,
         )
         validation_rows = runner.validate(
             manifest_path=args.val_manifest,

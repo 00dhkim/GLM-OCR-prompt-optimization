@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import itertools
 import re
 
 import pandas as pd
@@ -44,6 +45,7 @@ class PromptOptimizer:
         learning_examples: list[PromptLearningExample] | None = None,
         feedback_columns: list[str] | None = None,
         task_description: str = "Optimize an OCR transcription prompt using evaluator feedback.",
+        candidate_strategy: str = "ocr-rules",
     ) -> list[PromptCandidate]:
         examples = learning_examples or self._build_learning_examples_from_failures(
             current_prompt=current_prompt,
@@ -53,6 +55,9 @@ class PromptOptimizer:
             "evaluator_correctness",
             "evaluator_explanation",
             "error_tags",
+            "failure_mode_summary",
+            "suggested_instruction_change",
+            "field_risk",
         ]
         dataset = self._dataset_from_learning_examples(examples)
         annotations = self._create_annotations(
@@ -72,6 +77,9 @@ class PromptOptimizer:
             current_prompt=current_prompt,
             count=count,
             rationale=task_description,
+            annotations=annotations,
+            learning_examples=examples,
+            candidate_strategy=candidate_strategy,
         )
         self._last_learning_context = {
             "aggregate_metrics": {
@@ -83,6 +91,8 @@ class PromptOptimizer:
             "dataset_records": dataset.to_dict(orient="records"),
             "raw_candidate_text": optimized_text,
             "sanitized_candidates": [candidate.metadata for candidate in candidates],
+            "candidate_strategy": candidate_strategy,
+            "few_shot_examples": [example.sample_id for example in examples if example.representative],
         }
         return candidates
 
@@ -163,11 +173,41 @@ class PromptOptimizer:
                     "field_type_hint": metadata.get("field_type_hint", "general"),
                     "digit_heavy": metadata.get("digit_heavy", "false"),
                     "line_break_error": metadata.get("line_break_error", "false"),
+                    "failure_mode_summary": metadata.get("failure_mode_summary", ""),
+                    "suggested_instruction_change": metadata.get("suggested_instruction_change", ""),
+                    "field_risk": metadata.get("field_risk", "general"),
                 }
             )
         return pd.DataFrame(rows)
 
     def _expand_candidate_variants(
+        self,
+        *,
+        raw_prompt: str,
+        current_prompt: PromptCandidate,
+        count: int,
+        rationale: str,
+        annotations: list[str],
+        learning_examples: list[PromptLearningExample],
+        candidate_strategy: str,
+    ) -> list[PromptCandidate]:
+        if candidate_strategy == "legacy":
+            return self._expand_legacy_variants(
+                raw_prompt=raw_prompt,
+                current_prompt=current_prompt,
+                count=count,
+                rationale=rationale,
+            )
+        return self._expand_rule_variants(
+            raw_prompt=raw_prompt,
+            current_prompt=current_prompt,
+            count=count,
+            rationale=rationale,
+            annotations=annotations,
+            learning_examples=learning_examples,
+        )
+
+    def _expand_legacy_variants(
         self,
         *,
         raw_prompt: str,
@@ -247,6 +287,56 @@ class PromptOptimizer:
             )
         return deduped
 
+    def _expand_rule_variants(
+        self,
+        *,
+        raw_prompt: str,
+        current_prompt: PromptCandidate,
+        count: int,
+        rationale: str,
+        annotations: list[str],
+        learning_examples: list[PromptLearningExample],
+    ) -> list[PromptCandidate]:
+        sanitized_text, sanitizers = self._sanitize_prompt(raw_prompt, current_prompt.text)
+        signals = self._collect_rule_signals(
+            sanitized_text=sanitized_text,
+            annotations=annotations,
+            learning_examples=learning_examples,
+        )
+        bundles = self._rule_bundles(signals, current_prompt.text)
+        deduped: list[PromptCandidate] = []
+        seen: set[str] = set()
+        raw_hash = hashlib.sha1(raw_prompt.encode("utf-8")).hexdigest()[:10]
+        target_count = max(6, count)
+        for index, (bundle_name, bundle_rules) in enumerate(bundles[:target_count], start=1):
+            rendered = self._render_prompt_from_rule_bundle(bundle_rules)
+            normalized = rendered.strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            deduped.append(
+                PromptCandidate(
+                    name=f"PL-R{index}",
+                    text=normalized,
+                    rationale=rationale,
+                    metadata={
+                        "source": "prompt_learning_sdk",
+                        "variant": bundle_name,
+                        "sanitizers_applied": ",".join(sanitizers),
+                        "raw_prompt_hash": raw_hash,
+                        "rules": ",".join(bundle_rules),
+                    },
+                )
+            )
+        if not deduped:
+            return self._expand_legacy_variants(
+                raw_prompt=raw_prompt,
+                current_prompt=current_prompt,
+                count=count,
+                rationale=rationale,
+            )
+        return deduped
+
     def _sanitize_prompt(self, raw_prompt: str, current_prompt_text: str) -> tuple[str, list[str]]:
         text = raw_prompt.replace("\r\n", "\n").strip()
         applied: list[str] = []
@@ -301,6 +391,95 @@ class PromptOptimizer:
             text = current_prompt_text
             applied.append("fallback_to_current")
         return text, applied
+
+    def _collect_rule_signals(
+        self,
+        *,
+        sanitized_text: str,
+        annotations: list[str],
+        learning_examples: list[PromptLearningExample],
+    ) -> set[str]:
+        combined = "\n".join([sanitized_text, *annotations]).lower()
+        tags = list(
+            itertools.chain.from_iterable(example.error_tags for example in learning_examples if example.evaluator_correctness == "fail")
+        )
+        signals: set[str] = {"exact_visible_text", "plain_text_only"}
+        if "translate" in combined or "script_substitution" in tags:
+            signals.add("no_translation")
+            signals.add("preserve_script")
+        if "repeat" in combined or "repetition" in tags:
+            signals.add("no_repetition")
+        if "line" in combined or any(example.metadata.get("line_break_error") == "true" for example in learning_examples):
+            signals.add("preserve_line_breaks")
+        if "guess" in combined or "missing_content" in tags:
+            signals.add("no_guessing")
+        if "numeric" in combined or any(example.metadata.get("digit_heavy") == "true" for example in learning_examples):
+            signals.add("numeric_strict")
+        if "markdown" in combined or any(example.metadata.get("contains_markdown") == "true" for example in learning_examples):
+            signals.add("no_markdown")
+        if any(example.metadata.get("instruction_echo") == "true" for example in learning_examples):
+            signals.add("no_instruction_echo")
+        return signals
+
+    def _rule_bundles(self, signals: set[str], current_prompt_text: str) -> list[tuple[str, list[str]]]:
+        bundles: list[tuple[str, list[str]]] = []
+        bundles.append(("minimal", ["exact_visible_text", "plain_text_only"]))
+        bundles.append(("anti_repeat", ["exact_visible_text", "plain_text_only", "no_repetition", "no_markdown"]))
+        bundles.append(("anti_translate", ["exact_visible_text", "plain_text_only", "no_translation", "preserve_script"]))
+        bundles.append(("layout_safe", ["exact_visible_text", "plain_text_only", "preserve_line_breaks", "no_guessing"]))
+        bundles.append(("numeric_safe", ["exact_visible_text", "plain_text_only", "numeric_strict", "no_guessing"]))
+        ordered = [rule for rule in (
+            "no_translation",
+            "preserve_script",
+            "no_repetition",
+            "preserve_line_breaks",
+            "no_guessing",
+            "numeric_strict",
+            "no_markdown",
+            "no_instruction_echo",
+        ) if rule in signals]
+        if ordered:
+            bundles.append(("signal_full", ["exact_visible_text", "plain_text_only", *ordered]))
+        bundles.append(("current_prompt", self._rules_from_existing_prompt(current_prompt_text=current_prompt_text)))
+        return bundles
+
+    def _rules_from_existing_prompt(self, current_prompt_text: str) -> list[str]:
+        text = current_prompt_text.lower()
+        rules = ["exact_visible_text", "plain_text_only"]
+        if "translate" in text:
+            rules.append("no_translation")
+        if "repeat" in text:
+            rules.append("no_repetition")
+        if "line break" in text or "reading order" in text:
+            rules.append("preserve_line_breaks")
+        if "guess" in text:
+            rules.append("no_guessing")
+        if "korean" in text or "script" in text or "chinese" in text:
+            rules.append("preserve_script")
+        return rules
+
+    def _render_prompt_from_rule_bundle(self, rules: list[str]) -> str:
+        rule_map = {
+            "exact_visible_text": "Transcribe only the visible text exactly as it appears.",
+            "plain_text_only": "Output plain text only.",
+            "no_translation": "Do not translate, normalize, or correct the text.",
+            "preserve_script": "Do not substitute Korean text with Chinese characters or other scripts.",
+            "no_repetition": "Do not repeat text.",
+            "preserve_line_breaks": "Preserve reading order and line breaks when they are visually clear.",
+            "no_guessing": "If text is unclear, keep only the visible portion and do not guess missing characters.",
+            "numeric_strict": "For prices, quantities, dates, and codes, copy visible digits and separators only.",
+            "no_markdown": "Do not include markdown, labels, or code fences.",
+            "no_instruction_echo": "Do not repeat the instruction text in the output.",
+        }
+        rendered = ["Text Recognition:"]
+        seen: set[str] = set()
+        for rule in rules:
+            line = rule_map.get(rule)
+            if not line or line in seen:
+                continue
+            seen.add(line)
+            rendered.append(line)
+        return "\n".join(rendered).strip()
 
     def _truncate_prompt(self, text: str, *, max_lines: int, max_chars: int) -> str:
         lines = [line.rstrip() for line in text.splitlines() if line.strip()]
@@ -378,8 +557,10 @@ class PromptOptimizer:
     def _feedback_explanation(self, row: EvaluationResult) -> str:
         tags = self._error_tags(row)
         if not tags:
-            return "The output needs to follow exact visible-text transcription more closely."
-        return "Observed issues: " + ", ".join(tags) + "."
+            return "The output should follow exact visible-text transcription more closely."
+        field_risk = self._field_risk(row)
+        fixes = self._suggested_instruction_change(row, tags)
+        return f"Observed issues in a {field_risk} field: {', '.join(tags)}. Recommended prompt change: {fixes}."
 
     def _error_tags(self, row: EvaluationResult) -> list[str]:
         tags: list[str] = []
@@ -405,7 +586,34 @@ class PromptOptimizer:
             "field_type_hint": self._field_type_hint(row.reference_text),
             "digit_heavy": str(self._digit_ratio(row.reference_text) >= 0.5).lower(),
             "line_break_error": str(row.reference_text.count("\n") != row.predicted_text.count("\n")).lower(),
+            "failure_mode_summary": ", ".join(self._error_tags(row)),
+            "suggested_instruction_change": self._suggested_instruction_change(row, self._error_tags(row)),
+            "field_risk": self._field_risk(row),
         }
+
+    def _suggested_instruction_change(self, row: EvaluationResult, tags: list[str]) -> str:
+        changes: list[str] = []
+        if "repetition" in tags:
+            changes.append("strengthen the no-repeat rule")
+        if "script_substitution" in tags:
+            changes.append("forbid script substitution and translation")
+        if "overlong_output" in tags:
+            changes.append("require plain text only with no markdown or extra labels")
+        if row.reference_text.count("\n") != row.predicted_text.count("\n"):
+            changes.append("preserve line breaks when visually clear")
+        if self._digit_ratio(row.reference_text) >= 0.5:
+            changes.append("copy digits and separators exactly without guessing")
+        if not changes:
+            changes.append("tighten exact visible-text transcription")
+        return "; ".join(dict.fromkeys(changes))
+
+    def _field_risk(self, row: EvaluationResult) -> str:
+        hint = self._field_type_hint(row.reference_text)
+        if hint == "numeric":
+            return "numeric"
+        if hint in {"date", "address", "mixed"}:
+            return hint
+        return "general"
 
     def _contains_instruction_echo(self, text: str) -> bool:
         lowered = text.lower()

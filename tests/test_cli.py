@@ -38,6 +38,11 @@ def _aggregate(name: str, text: str, cer: float, score: float) -> AggregateEvalu
         mean_total_score=score,
         chinese_rate=0.0,
         repetition_rate=0.0,
+        markdown_leakage_rate=0.0,
+        instruction_echo_rate=0.0,
+        line_break_match_rate=1.0,
+        numeric_field_cer=cer,
+        non_numeric_field_cer=cer,
     )
 
 
@@ -106,12 +111,13 @@ def test_run_all_writes_adopted_prompt_and_report(tmp_path: Path, monkeypatch, c
                 text="Text Recognition:",
             )
 
-        def optimize(self, *, manifest_path: Path, output_dir: Path, starting_prompt: PromptCandidate, rounds: int = 3, candidates_per_round: int = 5):
+        def optimize(self, *, manifest_path: Path, output_dir: Path, starting_prompt: PromptCandidate, rounds: int = 3, candidates_per_round: int = 5, candidate_strategy: str = "ocr-rules"):
             seen["optimize_manifest"] = manifest_path
             seen["optimize_output_dir"] = output_dir
             seen["starting_prompt"] = starting_prompt
             seen["rounds"] = rounds
             seen["candidates_per_round"] = candidates_per_round
+            seen["candidate_strategy"] = candidate_strategy
             return PromptCandidate(name="final", text="Optimized prompt")
 
         def validate(self, *, manifest_path: Path, output_dir: Path, prompts: list[PromptCandidate]):
@@ -151,6 +157,8 @@ def test_run_all_writes_adopted_prompt_and_report(tmp_path: Path, monkeypatch, c
             "1",
             "--candidates-per-round",
             "4",
+            "--candidate-strategy",
+            "ocr-rules",
         ],
     )
 
@@ -164,6 +172,7 @@ def test_run_all_writes_adopted_prompt_and_report(tmp_path: Path, monkeypatch, c
     assert seen["report_final_evaluations_path"] == tmp_path / "runs" / "smoke" / "validation" / "final" / "evaluations.jsonl"
     assert seen["rounds"] == 1
     assert seen["candidates_per_round"] == 4
+    assert seen["candidate_strategy"] == "ocr-rules"
     assert "final: cer=0.2800" in out
     assert "adopted=final" in out
 

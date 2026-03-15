@@ -29,10 +29,12 @@ class OCRResult:
 class PenaltyBreakdown:
     chinese_mixed: float
     repetition: float
+    markdown_leakage: float = 0.0
+    instruction_echo: float = 0.0
 
     @property
     def total(self) -> float:
-        return self.chinese_mixed + self.repetition
+        return self.chinese_mixed + self.repetition + self.markdown_leakage + self.instruction_echo
 
 
 @dataclass(slots=True)
@@ -49,6 +51,11 @@ class EvaluationResult:
     reference_text: str
     image_path: Path
     split: str | None = None
+    contains_markdown: bool = False
+    instruction_echo: bool = False
+    field_type_hint: str = "general"
+    digit_heavy: bool = False
+    line_break_mismatch: bool = False
 
 
 @dataclass(slots=True)
@@ -78,6 +85,11 @@ class AggregateEvaluation:
     mean_total_score: float
     chinese_rate: float
     repetition_rate: float
+    markdown_leakage_rate: float = 0.0
+    instruction_echo_rate: float = 0.0
+    line_break_match_rate: float = 1.0
+    numeric_field_cer: float = 0.0
+    non_numeric_field_cer: float = 0.0
 
 
 @dataclass(slots=True)
@@ -95,6 +107,8 @@ class PromptLearningExample:
     token_f1: float
     total_score: float
     split: str | None = None
+    cluster_id: str = "general"
+    representative: bool = False
     metadata: dict[str, str] = field(default_factory=dict)
 
 
@@ -112,6 +126,9 @@ class PromptLearningRoundRecord:
     few_shot_example_count: int = 0
     rejected_candidates: dict[str, list[str]] = field(default_factory=dict)
     sanitizer_summary: dict[str, list[str]] = field(default_factory=dict)
+    winner_reason: str = ""
+    failure_mode_summary: dict[str, int] = field(default_factory=dict)
+    field_breakdown: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
