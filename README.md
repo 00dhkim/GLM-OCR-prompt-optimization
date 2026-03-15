@@ -400,8 +400,11 @@ uv run glm-ocr-opt prepare-korie-ocr \
 - `OCR_MODEL`
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL`
-- `ARIZE_API_KEY`
-- `ARIZE_SPACE_ID`
+- `PHOENIX_API_KEY`
+- `PHOENIX_COLLECTOR_ENDPOINT`
+- `PHOENIX_BASE_URL`
+- `PHOENIX_PROJECT_NAME`
+- `PHOENIX_CLIENT_HEADERS`
 - `OUTPUT_ROOT`
 
 하위 호환을 위해 기존 `OLLAMA_BASE_URL`, `OLLAMA_API_KEY`, `OLLAMA_MODEL`도 계속 읽지만, 새 설정은 `OCR_*` 기준으로 맞추는 것을 권장한다.
@@ -430,6 +433,21 @@ docker compose logs -f vllm
 ```
 
 `~/.bashrc` 상단의 non-interactive `return` 때문에 `source ~/.bashrc` 방식은 compose 실행용으로 적합하지 않을 수 있다. 위처럼 inline으로 `HF_TOKEN`만 꺼내 넘기는 편이 안전하다.
+
+실전 연결 기준 권장 조합:
+
+- OCR 서버
+  - vLLM 같은 OpenAI 호환 서버를 쓰면 `OCR_BASE_URL=http://localhost:8000/v1`처럼 맞춘다.
+- Prompt optimizer
+  - `OPENAI_API_KEY`가 필요하다.
+- Arize AX
+  - tracing은 `ARIZE_API_KEY` + `ARIZE_SPACE_ID` 또는 `PHOENIX_API_KEY`로 동작한다.
+  - `PHOENIX_COLLECTOR_ENDPOINT`는 커스텀 OTLP collector가 있을 때만 넣는다.
+  - Arize AX 기본 경로를 쓸 때는 비워두고 `arize-otel` 기본 endpoint를 사용한다.
+  - `PHOENIX_BASE_URL`은 Phoenix prompt/dataset experiment API를 직접 쓸 때만 필요하다.
+  - 예전 `ARIZE_API_KEY`, `ARIZE_SPACE_ID`도 읽지만 내부적으로 `PHOENIX_*`로 브리지된다.
+
+`.env.example`에는 vLLM + Arize AX 조합의 기준값을 적어두었다.
 
 ## 12. 어떤 경우에 어떤 데이터를 쓰면 좋은가
 

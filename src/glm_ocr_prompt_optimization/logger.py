@@ -6,7 +6,15 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Iterable
 
-from .models import AggregateEvaluation, EvaluationResult, OCRResult, PromptCandidate, TimingRecord
+from .models import (
+    AggregateEvaluation,
+    EvaluationResult,
+    OCRResult,
+    PromptCandidate,
+    PromptLearningExample,
+    PromptLearningRoundRecord,
+    TimingRecord,
+)
 
 
 class ExperimentLogger:
@@ -52,6 +60,27 @@ class ExperimentLogger:
         with path.open("w", encoding="utf-8") as handle:
             for prompt in prompts:
                 handle.write(json.dumps(asdict(prompt), ensure_ascii=False) + "\n")
+        return path
+
+    def write_learning_examples(
+        self,
+        rows: Iterable[PromptLearningExample],
+        filename: str = "prompt_learning_examples.jsonl",
+    ) -> Path:
+        path = self.output_dir / filename
+        with path.open("w", encoding="utf-8") as handle:
+            for row in rows:
+                handle.write(json.dumps(asdict(row), ensure_ascii=False) + "\n")
+        return path
+
+    def write_round_summary(self, row: PromptLearningRoundRecord, filename: str = "round_summary.json") -> Path:
+        path = self.output_dir / filename
+        path.write_text(json.dumps(asdict(row), ensure_ascii=False, indent=2), encoding="utf-8")
+        return path
+
+    def write_json(self, payload: dict[str, object], filename: str) -> Path:
+        path = self.output_dir / filename
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         return path
 
     def write_timings(self, rows: Iterable[TimingRecord], filename: str = "timings.jsonl") -> Path:

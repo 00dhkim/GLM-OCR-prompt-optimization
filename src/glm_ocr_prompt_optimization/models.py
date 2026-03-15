@@ -56,6 +56,7 @@ class PromptCandidate:
     name: str
     text: str
     rationale: str = ""
+    metadata: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -77,6 +78,40 @@ class AggregateEvaluation:
     mean_total_score: float
     chinese_rate: float
     repetition_rate: float
+
+
+@dataclass(slots=True)
+class PromptLearningExample:
+    sample_id: str
+    prompt_name: str
+    current_prompt: str
+    reference_text: str
+    predicted_text: str
+    evaluator_correctness: str
+    evaluator_explanation: str
+    error_tags: list[str]
+    raw_cer: float
+    cer: float
+    token_f1: float
+    total_score: float
+    split: str | None = None
+    metadata: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class PromptLearningRoundRecord:
+    round_index: int
+    starting_prompt: PromptCandidate
+    selected_candidate: PromptCandidate
+    candidates: list[PromptCandidate]
+    train_aggregate: AggregateEvaluation
+    candidate_aggregates: list[AggregateEvaluation]
+    feedback_columns: list[str]
+    learning_examples: list[PromptLearningExample]
+    analysis_summary: str
+    few_shot_example_count: int = 0
+    rejected_candidates: dict[str, list[str]] = field(default_factory=dict)
+    sanitizer_summary: dict[str, list[str]] = field(default_factory=dict)
 
 
 @dataclass(slots=True)

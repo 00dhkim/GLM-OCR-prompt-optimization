@@ -1,106 +1,38 @@
 from __future__ import annotations
 
-import json
-import unicodedata
-from dataclasses import asdict, dataclass
+import hashlib
+import re
 
-from openai import OpenAI
+import pandas as pd
+from optimizer_sdk.prompt_learning_optimizer import PromptLearningOptimizer
+from phoenix.client.types import PromptVersion
 
-from .models import AggregateEvaluation, EvaluationResult, PromptCandidate
+from .arize_logger import ArizeLogger
+from .models import AggregateEvaluation, EvaluationResult, PromptCandidate, PromptLearningExample
 
 
-ANALYSIS_SYSTEM_PROMPT = """You analyze OCR prompt failures before rewriting prompts.
-Return strict JSON with top-level keys:
-- issues: list of objects with name, severity, evidence, and instruction
-- keep: list of strengths to preserve from the current prompt
-- avoid: list of prompt patterns to avoid next
-- rewrite_strategy: short paragraph
-Prefer compact, evidence-based analysis. Do not write candidate prompts yet.
-"""
-
-OPTIMIZER_SYSTEM_PROMPT = """You optimize prompts for plain-text OCR.
-Return strict JSON with a top-level key named "candidates".
-Each candidate must contain "name", "text", and "rationale".
-Prefer concise prompts written in English.
-The prompt is for transcription only, not extraction or JSON formatting.
-Each candidate prompt must be at most 1024 characters long, including the "Text Recognition:" prefix.
-Strong candidates usually:
-- say to transcribe only visible text
-- require plain text output only
-- forbid translation, correction, normalization, and guessing
-- forbid substituting Korean text with Chinese characters or other scripts
-- preserve reading order and line breaks when visually clear
-- forbid repeated text
-- forbid placeholders such as [unclear], [unreadable], or invented markers
-"""
-
-FALLBACK_ANALYSIS = {
-    "issues": [
-        {
-            "name": "character substitution, ordering errors, or script contamination",
-            "severity": "medium",
-            "evidence": "Top failures show mismatched characters despite non-empty output.",
-            "instruction": "Use a short transcription-only prompt, avoid interpretation, and forbid Chinese-character substitution.",
-        }
-    ],
-    "keep": ["The task should stay plain-text OCR only."],
-    "avoid": ["Long prompts that add explanation or extraction behavior."],
-    "rewrite_strategy": "Keep the prompt short, imperative, and English-first. Emphasize visible-text transcription only.",
-}
-
-FALLBACK_CANDIDATES = [
-    PromptCandidate(
-        name="ENG-F1",
-        text=(
-            "Text Recognition:\n"
-            "Transcribe all visible text exactly as it appears.\n"
-            "Output plain text only.\n"
-            "Do not translate, correct, or guess."
-        ),
-        rationale="English fallback focused on exact transcription and no guessing.",
+ANNOTATOR_PROMPTS = [
+    (
+        "You are analyzing OCR prompt behavior. Summarize the highest-value instruction changes that would prevent "
+        "the observed transcription failures without turning the task into extraction or translation."
     ),
-    PromptCandidate(
-        name="ENG-F2",
-        text=(
-            "Text Recognition:\n"
-            "Read the image and transcribe only the visible text.\n"
-            "Preserve the observed reading order and line breaks when clear.\n"
-            "Do not translate, explain, normalize, or infer missing text."
-        ),
-        rationale="English fallback focused on reading order and no inference.",
-    ),
-    PromptCandidate(
-        name="ENG-F3",
-        text=(
-            "Text Recognition:\n"
-            "Transcribe only what is visibly present in the image.\n"
-            "Output plain text only.\n"
-            "If text is unclear, keep only the visible part.\n"
-            "Do not repeat text."
-        ),
-        rationale="English fallback focused on conservative output and repetition control.",
+    (
+        "Review the OCR outputs and evaluator feedback. Produce concise annotations about repeated failure modes, "
+        "especially script substitution, repetition, omission, and line-order mistakes."
     ),
 ]
 
-MAX_PROMPT_LENGTH = 1024
-
-
-@dataclass(slots=True)
-class FailureExample:
-    sample_id: str
-    reference_text: str
-    predicted_text: str
-    raw_cer: float
-    cer: float
-    token_f1: float
-    chinese_penalty: float
-    repetition_penalty: float
-
 
 class PromptOptimizer:
-    def __init__(self, *, api_key: str, model: str) -> None:
-        self._client = OpenAI(api_key=api_key)
+    def __init__(self, *, api_key: str, model: str, arize_logger: ArizeLogger | None = None) -> None:
+        self._api_key = api_key
         self._model = model
+        self._arize_logger = arize_logger
+        self._last_learning_context: dict[str, object] | None = None
+
+    @property
+    def last_learning_context(self) -> dict[str, object] | None:
+        return self._last_learning_context
 
     def generate_candidates(
         self,
@@ -109,344 +41,395 @@ class PromptOptimizer:
         aggregate: AggregateEvaluation,
         failures: list[EvaluationResult],
         count: int = 5,
+        learning_examples: list[PromptLearningExample] | None = None,
+        feedback_columns: list[str] | None = None,
+        task_description: str = "Optimize an OCR transcription prompt using evaluator feedback.",
     ) -> list[PromptCandidate]:
-        failure_payload = self._failure_payload(failures[:15])
-        failure_summary = self._summarize_failures(failures[:15])
-        analysis = self._analyze_failures(
+        examples = learning_examples or self._build_learning_examples_from_failures(
             current_prompt=current_prompt,
-            aggregate=aggregate,
-            failure_summary=failure_summary,
-            failure_payload=failure_payload,
+            failures=failures,
         )
-        request_payload = self._build_candidate_request_payload(
+        feedback_columns = feedback_columns or [
+            "evaluator_correctness",
+            "evaluator_explanation",
+            "error_tags",
+        ]
+        dataset = self._dataset_from_learning_examples(examples)
+        annotations = self._create_annotations(
             current_prompt=current_prompt,
-            aggregate=aggregate,
-            failure_summary=failure_summary,
-            failure_payload=failure_payload,
-            analysis=analysis,
+            dataset=dataset,
+            feedback_columns=feedback_columns,
+        )
+        optimized = self._run_prompt_learning(
+            current_prompt=current_prompt,
+            dataset=dataset,
+            feedback_columns=feedback_columns,
+            annotations=annotations,
+        )
+        optimized_text = self._extract_prompt_text(optimized)
+        candidates = self._expand_candidate_variants(
+            raw_prompt=optimized_text,
+            current_prompt=current_prompt,
             count=count,
+            rationale=task_description,
         )
+        self._last_learning_context = {
+            "aggregate_metrics": {
+                "mean_total_score": aggregate.mean_total_score,
+                "mean_cer": aggregate.mean_cer,
+            },
+            "feedback_columns": feedback_columns,
+            "annotations": annotations,
+            "dataset_records": dataset.to_dict(orient="records"),
+            "raw_candidate_text": optimized_text,
+            "sanitized_candidates": [candidate.metadata for candidate in candidates],
+        }
+        return candidates
 
-        try:
-            response_text = self._request_candidates(request_payload)
-            candidates = self._parse_and_rank_candidates(response_text.strip(), count=count, fill_fallbacks=False)
-            if len(candidates) < count:
-                retry_payload = self._build_regeneration_payload(
-                    base_payload=request_payload,
-                    accepted_candidates=candidates,
-                    shortage=count - len(candidates),
-                )
-                retry_text = self._request_candidates(retry_payload)
-                merged = self._merge_candidates(
-                    existing=candidates,
-                    incoming=self._parse_and_rank_candidates(retry_text.strip(), count=count, fill_fallbacks=False),
-                    count=count,
-                )
-                return merged
-            return self._merge_candidates(existing=candidates, incoming=[], count=count)
-        except Exception:
-            return self._fallback_candidates(count)
-
-    def _request_candidates(self, payload: dict[str, object]) -> str:
-        response = self._client.responses.create(
-            model=self._model,
-            reasoning={"effort": "minimal"},
-            input=[
-                {"role": "system", "content": OPTIMIZER_SYSTEM_PROMPT},
-                {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
-            ],
-        )
-        return response.output_text
-
-    def _analyze_failures(
+    def _create_annotations(
         self,
         *,
         current_prompt: PromptCandidate,
-        aggregate: AggregateEvaluation,
-        failure_summary: dict[str, object],
-        failure_payload: list[dict[str, object]],
-    ) -> dict[str, object]:
-        request_payload = self._build_analysis_payload(
-            current_prompt=current_prompt,
-            aggregate=aggregate,
-            failure_summary=failure_summary,
-            failure_payload=failure_payload,
+        dataset: pd.DataFrame,
+        feedback_columns: list[str],
+    ) -> list[str]:
+        optimizer = PromptLearningOptimizer(
+            prompt=current_prompt.text,
+            model_choice=self._model,
+            openai_api_key=self._api_key,
         )
         try:
-            response = self._client.responses.create(
-                model=self._model,
-                reasoning={"effort": "minimal"},
-                input=[
-                    {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},
-                    {"role": "user", "content": json.dumps(request_payload, ensure_ascii=False)},
-                ],
+            return optimizer.create_annotation(
+                prompt=current_prompt.text,
+                template_variables=[],
+                dataset=dataset,
+                feedback_columns=feedback_columns,
+                annotator_prompts=ANNOTATOR_PROMPTS,
+                output_column="predicted_text",
+                ground_truth_column="reference_text",
             )
-            payload = json.loads(response.output_text.strip())
-            if not isinstance(payload.get("issues"), list):
-                return FALLBACK_ANALYSIS
-            return payload
         except Exception:
-            return FALLBACK_ANALYSIS
+            return []
 
-    def _build_analysis_payload(
+    def _run_prompt_learning(
         self,
         *,
         current_prompt: PromptCandidate,
-        aggregate: AggregateEvaluation,
-        failure_summary: dict[str, object],
-        failure_payload: list[dict[str, object]],
-    ) -> dict[str, object]:
-        return {
-            "task": "Analyze why the OCR prompt is underperforming and what prompt changes are justified.",
-            "current_prompt": current_prompt.text,
-            "aggregate_metrics": asdict(aggregate),
-            "failure_summary": failure_summary,
-            "failure_examples": failure_payload,
-            "analysis_requirements": [
-                "Explain what to preserve from the current prompt.",
-                "Identify the top error categories with evidence.",
-                "Recommend prompt edits, not model changes.",
-                "Assume prompt language should stay English unless evidence suggests otherwise.",
-            ],
-        }
+        dataset: pd.DataFrame,
+        feedback_columns: list[str],
+        annotations: list[str],
+    ) -> PromptVersion | list[dict[str, str]] | str:
+        prompt_object: PromptVersion | str
+        prompt_object = current_prompt.text
+        if self._arize_logger and self._arize_logger.enabled:
+            prompt_version = self._arize_logger.create_prompt_version(
+                prompt=current_prompt,
+                description="OCR prompt under optimization via Arize Prompt Learning SDK",
+                metadata=current_prompt.metadata or None,
+            )
+            if prompt_version is not None:
+                prompt_object = prompt_version
 
-    def _build_candidate_request_payload(
+        optimizer = PromptLearningOptimizer(
+            prompt=prompt_object,
+            model_choice=self._model,
+            openai_api_key=self._api_key,
+            verbose=False,
+        )
+        return optimizer.optimize(
+            dataset=dataset,
+            output_column="predicted_text",
+            feedback_columns=feedback_columns,
+            annotations=annotations,
+            context_size_k=128000,
+        )
+
+    def _dataset_from_learning_examples(self, examples: list[PromptLearningExample]) -> pd.DataFrame:
+        rows = []
+        for row in examples:
+            metadata = row.metadata or {}
+            rows.append(
+                {
+                    "sample_id": row.sample_id,
+                    "predicted_text": row.predicted_text,
+                    "reference_text": row.reference_text,
+                    "evaluator_correctness": row.evaluator_correctness,
+                    "evaluator_explanation": row.evaluator_explanation,
+                    "error_tags": ", ".join(row.error_tags),
+                    "split": row.split or "",
+                    "output_length_ratio": metadata.get("output_length_ratio", "1.00"),
+                    "contains_markdown": metadata.get("contains_markdown", "false"),
+                    "instruction_echo": metadata.get("instruction_echo", "false"),
+                    "field_type_hint": metadata.get("field_type_hint", "general"),
+                    "digit_heavy": metadata.get("digit_heavy", "false"),
+                    "line_break_error": metadata.get("line_break_error", "false"),
+                }
+            )
+        return pd.DataFrame(rows)
+
+    def _expand_candidate_variants(
         self,
         *,
+        raw_prompt: str,
         current_prompt: PromptCandidate,
-        aggregate: AggregateEvaluation,
-        failure_summary: dict[str, object],
-        failure_payload: list[dict[str, object]],
-        analysis: dict[str, object],
         count: int,
-    ) -> dict[str, object]:
-        return {
-            "task": "Improve the OCR prompt while preserving plain text OCR output.",
-            "prompt_language_policy": {
-                "default_language": "English",
-                "rule": "Prefer English prompts unless non-English wording has strong measured validation evidence.",
-            },
-            "prompt_shape_guidance": {
-                "prefix": "Keep the 'Text Recognition:' prefix unless there is a strong reason to change it.",
-                "style": "Prefer short imperative sentences over long explanations.",
-                "required_rules": [
-                    "Transcribe only visible text.",
-                    "Output plain text only.",
-                    "Do not translate, correct, normalize, or guess.",
-                    "Do not substitute Korean text with Chinese characters or other scripts.",
-                    "Preserve reading order and line breaks when visually clear.",
-                    "Avoid repeated text.",
-                    "If some text is unclear, keep only the visible portion and do not insert placeholders.",
-                ],
-                "avoid": [
-                    "JSON or structured extraction requests",
-                    "Long task descriptions",
-                    "Language-specific wording without evidence",
-                    "Requests to infer missing or occluded text",
-                    "Chinese-character or Hanzi substitution for Korean text",
-                    "Placeholders such as [unclear], [unreadable], ???, or invented markers",
-                ],
-            },
-            "constraints": [
-                "Do not ask for JSON output.",
-                "Focus on transcription rules only.",
-                "Preserve plain text OCR behavior.",
-                "Do not drift far from the current prompt unless failures strongly justify it.",
-                "Do not substitute Korean text with Chinese characters or Hanzi.",
-                "Do not use placeholders or bracketed markers for unreadable text.",
-                "If text is unclear, prefer omitting the unreadable part over inventing substitute markers.",
-                f"Each candidate prompt must be at most {MAX_PROMPT_LENGTH} characters long, including the prefix.",
-                f"Return exactly {count} candidates.",
-            ],
-            "current_prompt": current_prompt.text,
-            "aggregate_metrics": asdict(aggregate),
-            "failure_summary": failure_summary,
-            "failure_examples": failure_payload,
-            "analysis": analysis,
-        }
+        rationale: str,
+    ) -> list[PromptCandidate]:
+        sanitized_text, sanitizers = self._sanitize_prompt(raw_prompt, current_prompt.text)
+        variants = [
+            ("compact", self._truncate_prompt(sanitized_text, max_lines=6, max_chars=280)),
+            ("balanced", self._truncate_prompt(sanitized_text, max_lines=9, max_chars=480)),
+            ("guarded", self._guarded_prompt_variant(sanitized_text, current_prompt.text)),
+        ]
+        deduped: list[PromptCandidate] = []
+        seen: set[str] = set()
+        raw_hash = hashlib.sha1(raw_prompt.encode("utf-8")).hexdigest()[:10]
+        target_count = max(3, count)
+        for index, (variant_name, variant_text) in enumerate(variants, start=1):
+            normalized = variant_text.strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            deduped.append(
+                PromptCandidate(
+                    name=f"PL-R{index}",
+                    text=normalized,
+                    rationale=rationale,
+                    metadata={
+                        "source": "prompt_learning_sdk",
+                        "variant": variant_name,
+                        "sanitizers_applied": ",".join(sanitizers),
+                        "raw_prompt_hash": raw_hash,
+                    },
+                )
+            )
+            if len(deduped) >= target_count:
+                break
+        fallback_variants = [
+            ("current_prompt", current_prompt.text.strip()),
+            ("short_header", "Text Recognition:\nOutput plain text only."),
+        ]
+        next_index = len(deduped) + 1
+        for variant_name, variant_text in fallback_variants:
+            normalized = variant_text.strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            deduped.append(
+                PromptCandidate(
+                    name=f"PL-R{next_index}",
+                    text=normalized,
+                    rationale=rationale,
+                    metadata={
+                        "source": "prompt_learning_sdk",
+                        "variant": variant_name,
+                        "sanitizers_applied": ",".join(sanitizers),
+                        "raw_prompt_hash": raw_hash,
+                    },
+                )
+            )
+            next_index += 1
+            if len(deduped) >= target_count:
+                break
+        if not deduped:
+            deduped.append(
+                PromptCandidate(
+                    name="PL-R1",
+                    text=current_prompt.text,
+                    rationale=rationale,
+                    metadata={
+                        "source": "prompt_learning_sdk",
+                        "variant": "fallback",
+                        "sanitizers_applied": ",".join(sanitizers),
+                        "raw_prompt_hash": raw_hash,
+                    },
+                )
+            )
+        return deduped
 
-    def _build_regeneration_payload(
+    def _sanitize_prompt(self, raw_prompt: str, current_prompt_text: str) -> tuple[str, list[str]]:
+        text = raw_prompt.replace("\r\n", "\n").strip()
+        applied: list[str] = []
+
+        new_text = re.sub(r"^\s*YOUR NEW PROMPT:\s*", "", text, flags=re.IGNORECASE)
+        if new_text != text:
+            applied.append("remove_scaffolding_header")
+            text = new_text.strip()
+
+        new_text = re.sub(r"```(?:[a-zA-Z0-9_-]+)?", "", text)
+        if new_text != text:
+            applied.append("remove_markdown_fences")
+            text = new_text
+
+        lines = [line.strip() for line in text.splitlines()]
+        filtered: list[str] = []
+        dropped_examples = False
+        for line in lines:
+            if not line:
+                continue
+            lower = line.lower()
+            if "[data sample]" in lower or "example 1:" in lower or "example 2:" in lower:
+                dropped_examples = True
+                continue
+            if "output examples" in lower or "for reference only" in lower:
+                dropped_examples = True
+                continue
+            filtered.append(line)
+        if dropped_examples:
+            applied.append("remove_examples")
+
+        deduped: list[str] = []
+        seen_lines: set[str] = set()
+        for line in filtered:
+            normalized = re.sub(r"\s+", " ", line).strip().lower()
+            if normalized in seen_lines:
+                continue
+            seen_lines.add(normalized)
+            deduped.append(line)
+        if len(deduped) != len(filtered):
+            applied.append("dedupe_lines")
+
+        if not deduped or not deduped[0].startswith("Text Recognition:"):
+            deduped.insert(0, "Text Recognition:")
+            applied.append("add_prompt_header")
+
+        text = "\n".join(deduped).strip()
+        if len(text) > 700:
+            text = self._truncate_prompt(text, max_lines=12, max_chars=700)
+            applied.append("clamp_length")
+        if not text:
+            text = current_prompt_text
+            applied.append("fallback_to_current")
+        return text, applied
+
+    def _truncate_prompt(self, text: str, *, max_lines: int, max_chars: int) -> str:
+        lines = [line.rstrip() for line in text.splitlines() if line.strip()]
+        kept = lines[:max_lines]
+        result = "\n".join(kept).strip()
+        if len(result) > max_chars:
+            result = result[:max_chars].rstrip()
+        return result
+
+    def _guarded_prompt_variant(self, sanitized_text: str, current_prompt_text: str) -> str:
+        lines = [line.strip() for line in sanitized_text.splitlines() if line.strip()]
+        rules = [line for line in lines[1:] if line.lower() != "text recognition:"]
+        essential = [
+            "Transcribe only the visible text.",
+            "Output plain text only.",
+            "Do not translate, explain, normalize, or guess.",
+            "Do not repeat text or include markdown.",
+        ]
+        merged: list[str] = ["Text Recognition:"]
+        seen: set[str] = set()
+        for line in essential + rules:
+            normalized = line.lower()
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            merged.append(line)
+            if len(merged) >= 6:
+                break
+        result = "\n".join(merged).strip()
+        return result or current_prompt_text
+
+    def _extract_prompt_text(self, optimized_prompt: PromptVersion | list[dict[str, str]] | str) -> str:
+        if isinstance(optimized_prompt, PromptVersion):
+            template = optimized_prompt._template
+            messages = template.get("messages", []) if isinstance(template, dict) else []
+            for message in messages:
+                if message.get("role") == "system":
+                    return str(message.get("content", "")).strip()
+            return ""
+        if isinstance(optimized_prompt, list):
+            for message in optimized_prompt:
+                if message.get("role") == "system":
+                    return str(message.get("content", "")).strip()
+            return ""
+        return optimized_prompt.strip()
+
+    def _build_learning_examples_from_failures(
         self,
         *,
-        base_payload: dict[str, object],
-        accepted_candidates: list[PromptCandidate],
-        shortage: int,
-    ) -> dict[str, object]:
-        payload = dict(base_payload)
-        payload["task"] = "Generate replacement OCR prompt candidates to fill the missing slots."
-        payload["constraints"] = [
-            *list(base_payload.get("constraints", [])),
-            f"Return exactly {shortage} replacement candidates.",
-            "Do not repeat any accepted candidate text.",
-            "If a previous candidate was too long, rewrite it into a shorter prompt instead of expanding it.",
-        ]
-        payload["accepted_candidates"] = [
-            {"name": candidate.name, "text": candidate.text, "length": len(candidate.text)}
-            for candidate in accepted_candidates
-        ]
-        return payload
-
-    def _failure_payload(self, failures: list[EvaluationResult]) -> list[dict[str, object]]:
-        return [
-            asdict(
-                FailureExample(
+        current_prompt: PromptCandidate,
+        failures: list[EvaluationResult],
+    ) -> list[PromptLearningExample]:
+        examples: list[PromptLearningExample] = []
+        for row in failures[:12]:
+            examples.append(
+                PromptLearningExample(
                     sample_id=row.sample_id,
+                    prompt_name=current_prompt.name,
+                    current_prompt=current_prompt.text,
                     reference_text=row.reference_text,
                     predicted_text=row.predicted_text,
+                    evaluator_correctness="fail",
+                    evaluator_explanation=self._feedback_explanation(row),
+                    error_tags=self._error_tags(row),
                     raw_cer=row.raw_cer,
                     cer=row.cer,
                     token_f1=row.token_f1,
-                    chinese_penalty=row.penalties.chinese_mixed,
-                    repetition_penalty=row.penalties.repetition,
+                    total_score=row.total_score,
+                    split=row.split,
+                    metadata=self._feedback_metadata(row),
                 )
             )
-            for row in failures
-        ]
+        return examples
 
-    def _summarize_failures(self, failures: list[EvaluationResult]) -> dict[str, object]:
-        if not failures:
-            return {
-                "count_considered": 0,
-                "high_chinese_count": 0,
-                "high_repetition_count": 0,
-                "avg_prediction_length": 0.0,
-                "avg_reference_length": 0.0,
-                "avg_raw_cer": 0.0,
-                "avg_normalized_cer": 0.0,
-                "avg_token_f1": 0.0,
-                "common_failure_modes": [],
-            }
+    def _feedback_explanation(self, row: EvaluationResult) -> str:
+        tags = self._error_tags(row)
+        if not tags:
+            return "The output needs to follow exact visible-text transcription more closely."
+        return "Observed issues: " + ", ".join(tags) + "."
 
-        avg_prediction_length = sum(len(row.predicted_text) for row in failures) / len(failures)
-        avg_reference_length = sum(len(row.reference_text) for row in failures) / len(failures)
-        modes = []
-        if any(row.penalties.chinese_mixed > 0 for row in failures):
-            modes.append("unexpected Chinese character contamination")
-        if any(row.penalties.repetition > 0 for row in failures):
-            modes.append("repetition or rambling output")
-        if any(len(row.predicted_text) > len(row.reference_text) * 1.5 for row in failures if row.reference_text):
-            modes.append("prediction longer than reference")
-        if not modes:
-            modes.append("character substitution or ordering errors")
+    def _error_tags(self, row: EvaluationResult) -> list[str]:
+        tags: list[str] = []
+        if row.penalties.chinese_mixed > 0:
+            tags.append("script_substitution")
+        if row.penalties.repetition > 0:
+            tags.append("repetition")
+        if row.cer >= 0.5:
+            tags.append("high_cer")
+        if row.token_f1 <= 0.4:
+            tags.append("missing_content")
+        if row.reference_text and len(row.predicted_text) > len(row.reference_text) * 1.5:
+            tags.append("overlong_output")
+        return tags
 
+    def _feedback_metadata(self, row: EvaluationResult) -> dict[str, str]:
+        reference_length = max(len(row.reference_text), 1)
+        predicted_length = len(row.predicted_text)
         return {
-            "count_considered": len(failures),
-            "high_chinese_count": sum(1 for row in failures if row.penalties.chinese_mixed > 0),
-            "high_repetition_count": sum(1 for row in failures if row.penalties.repetition > 0),
-            "avg_prediction_length": round(avg_prediction_length, 2),
-            "avg_reference_length": round(avg_reference_length, 2),
-            "avg_raw_cer": round(sum(row.raw_cer for row in failures) / len(failures), 4),
-            "avg_normalized_cer": round(sum(row.cer for row in failures) / len(failures), 4),
-            "avg_token_f1": round(sum(row.token_f1 for row in failures) / len(failures), 4),
-            "common_failure_modes": modes,
-            "example_warning": "If Korean text is present, avoid Chinese-character substitution such as Hanzi output.",
+            "output_length_ratio": f"{predicted_length / reference_length:.2f}",
+            "contains_markdown": str("```" in row.predicted_text or "`" in row.predicted_text).lower(),
+            "instruction_echo": str(self._contains_instruction_echo(row.predicted_text)).lower(),
+            "field_type_hint": self._field_type_hint(row.reference_text),
+            "digit_heavy": str(self._digit_ratio(row.reference_text) >= 0.5).lower(),
+            "line_break_error": str(row.reference_text.count("\n") != row.predicted_text.count("\n")).lower(),
         }
 
-    def _parse_and_rank_candidates(
-        self,
-        content: str,
-        *,
-        count: int,
-        fill_fallbacks: bool = True,
-    ) -> list[PromptCandidate]:
-        payload = json.loads(content)
-        parsed: list[PromptCandidate] = []
-        seen_texts: set[str] = set()
-
-        for index, item in enumerate(payload["candidates"], start=1):
-            text = self._normalize_prompt_text(item["text"])
-            if not text or text in seen_texts:
-                continue
-            if len(text) > MAX_PROMPT_LENGTH:
-                continue
-            seen_texts.add(text)
-            parsed.append(
-                PromptCandidate(
-                    name=item.get("name", f"R{index}"),
-                    text=text,
-                    rationale=item.get("rationale", "").strip(),
-                )
-            )
-
-        parsed = [candidate for candidate in parsed if not self._contains_placeholder(candidate.text)]
-        parsed.sort(
-            key=lambda candidate: (
-                not self._is_english_first(candidate.text),
-                self._contains_placeholder(candidate.text),
-                len(candidate.text),
-            )
-        )
-
-        if fill_fallbacks:
-            for fallback in FALLBACK_CANDIDATES:
-                if len(parsed) >= count:
-                    break
-                normalized = self._normalize_prompt_text(fallback.text)
-                if normalized in seen_texts:
-                    continue
-                seen_texts.add(normalized)
-                parsed.append(
-                    PromptCandidate(
-                        name=fallback.name,
-                        text=normalized,
-                        rationale=fallback.rationale,
-                    )
-                )
-
-        return parsed[:count]
-
-    def _merge_candidates(
-        self,
-        *,
-        existing: list[PromptCandidate],
-        incoming: list[PromptCandidate],
-        count: int,
-    ) -> list[PromptCandidate]:
-        merged: list[PromptCandidate] = []
-        seen_texts: set[str] = set()
-        for candidate in [*existing, *incoming]:
-            if candidate.text in seen_texts:
-                continue
-            seen_texts.add(candidate.text)
-            merged.append(candidate)
-            if len(merged) >= count:
-                break
-        if len(merged) < count:
-            for fallback in self._fallback_candidates(count):
-                if fallback.text in seen_texts:
-                    continue
-                seen_texts.add(fallback.text)
-                merged.append(fallback)
-                if len(merged) >= count:
-                    break
-        return merged[:count]
-
-    def _fallback_candidates(self, count: int) -> list[PromptCandidate]:
-        return [
-            PromptCandidate(name=item.name, text=self._normalize_prompt_text(item.text), rationale=item.rationale)
-            for item in FALLBACK_CANDIDATES[:count]
-        ]
-
-    def _normalize_prompt_text(self, text: str) -> str:
-        normalized = text.strip().replace("\\r\\n", "\n").replace("\\n", "\n")
-        if not normalized:
-            return normalized
-        if not normalized.startswith("Text Recognition:"):
-            normalized = f"Text Recognition:\n{normalized}"
-        return normalized
-
-    def _contains_placeholder(self, text: str) -> bool:
+    def _contains_instruction_echo(self, text: str) -> bool:
         lowered = text.lower()
-        markers = ("[unclear]", "[unreadable]", "[illegible]", "???", "<unclear>", "<unreadable>")
+        markers = [
+            "transcribe",
+            "output only",
+            "do not include",
+            "text recognition",
+        ]
         return any(marker in lowered for marker in markers)
 
-    def _is_english_first(self, text: str) -> bool:
-        letters = [char for char in text if char.isalpha()]
-        if not letters:
-            return True
-        non_latin = 0
-        for char in letters:
-            name = unicodedata.name(char, "")
-            if "LATIN" not in name:
-                non_latin += 1
-        return non_latin / len(letters) <= 0.1
+    def _field_type_hint(self, text: str) -> str:
+        if "." in text and any(char.isdigit() for char in text):
+            return "date"
+        if any(char.isdigit() for char in text) and any(char.isalpha() for char in text):
+            return "mixed"
+        if any(char.isdigit() for char in text):
+            return "numeric"
+        if any(char in text for char in ("동", "로", "길", "번")):
+            return "address"
+        return "general"
+
+    def _digit_ratio(self, text: str) -> float:
+        if not text:
+            return 0.0
+        digits = sum(char.isdigit() for char in text)
+        return digits / len(text)
