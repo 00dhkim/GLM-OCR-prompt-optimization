@@ -16,6 +16,12 @@ def normalize_ocr_text(text: str) -> str:
     return " ".join(lines).strip()
 
 
+def normalize_unordered_text(text: str) -> str:
+    normalized = unicodedata.normalize("NFKC", text)
+    meaningful = [char for char in normalized if not char.isspace()]
+    return "".join(sorted(meaningful))
+
+
 def character_error_rate(reference: str, hypothesis: str) -> float:
     if not reference:
         return 0.0 if not hypothesis else 1.0
@@ -50,12 +56,28 @@ def token_f1(reference: str, hypothesis: str) -> float:
     return 2 * precision * recall / (precision + recall)
 
 
+def character_multiset_f1(reference: str, hypothesis: str) -> float:
+    ref_chars = Counter(normalize_unordered_text(reference))
+    hyp_chars = Counter(normalize_unordered_text(hypothesis))
+    if not ref_chars and not hyp_chars:
+        return 1.0
+    if not ref_chars or not hyp_chars:
+        return 0.0
+
+    overlap = sum(min(ref_chars[char], hyp_chars[char]) for char in ref_chars)
+    precision = overlap / sum(hyp_chars.values())
+    recall = overlap / sum(ref_chars.values())
+    if precision + recall == 0:
+        return 0.0
+    return 2 * precision * recall / (precision + recall)
+
+
 def _is_hangul(char: str) -> bool:
     code = ord(char)
     return 0xAC00 <= code <= 0xD7A3 or 0x1100 <= code <= 0x11FF or 0x3130 <= code <= 0x318F
 
 
-def _is_cjk(char: str) -> bool:
+def _is_chinese(char: str) -> bool:
     code = ord(char)
     return 0x4E00 <= code <= 0x9FFF or 0x3400 <= code <= 0x4DBF
 
@@ -83,23 +105,20 @@ def compute_penalties(
     reference_text: str = "",
     alpha: float = 0.10,
     beta: float = 0.15,
-    gamma: float = 0.15,
 ) -> PenaltyBreakdown:
     meaningful = _meaningful_chars(predicted_text)
     if not meaningful:
-        return PenaltyBreakdown(non_korean_mixed=0.0, repetition=0.0, empty_or_garbage=gamma)
+        return PenaltyBreakdown(chinese_mixed=0.0, repetition=0.0)
 
     reference_meaningful = _meaningful_chars(reference_text)
-    predicted_hangul = sum(1 for char in meaningful if _is_hangul(char))
-    predicted_cjk = sum(1 for char in meaningful if _is_cjk(char))
-    reference_cjk = sum(1 for char in reference_meaningful if _is_cjk(char))
-    alnum_count = sum(1 for char in meaningful if char.isalnum())
+    predicted_chinese = sum(1 for char in meaningful if _is_chinese(char))
+    reference_chinese = sum(1 for char in reference_meaningful if _is_chinese(char))
 
-    predicted_cjk_ratio = predicted_cjk / len(meaningful)
-    reference_cjk_ratio = reference_cjk / len(reference_meaningful) if reference_meaningful else 0.0
+    predicted_chinese_ratio = predicted_chinese / len(meaningful)
+    reference_chinese_ratio = reference_chinese / len(reference_meaningful) if reference_meaningful else 0.0
 
-    unexpected_cjk = predicted_cjk_ratio > 0.10 and reference_cjk_ratio < 0.05
-    non_korean = alpha if unexpected_cjk else 0.0
+    unexpected_chinese = predicted_chinese_ratio > 0.10 and reference_chinese_ratio < 0.05
+    chinese_mixed = alpha if unexpected_chinese else 0.0
 
     tokens = normalize_ocr_text(predicted_text).split()
     repeated = 0
@@ -108,16 +127,9 @@ def compute_penalties(
     repetition_threshold = 4 if len(tokens) < 20 else 6
     repetition = beta if repeated >= repetition_threshold or _has_suspicious_char_run(predicted_text) else 0.0
 
-    meaningful_ratio = alnum_count / len(meaningful)
-    min_expected_length = max(3, int(len(reference_meaningful) * 0.15)) if reference_meaningful else 3
-    too_short = len(meaningful) < min_expected_length
-    mostly_noise = meaningful_ratio < 0.25 and predicted_hangul + predicted_cjk < max(1, len(meaningful) // 4)
-    empty_or_garbage = gamma if too_short or mostly_noise else 0.0
-
     return PenaltyBreakdown(
-        non_korean_mixed=non_korean,
+        chinese_mixed=chinese_mixed,
         repetition=repetition,
-        empty_or_garbage=empty_or_garbage,
     )
 
 
@@ -129,22 +141,32 @@ def evaluate_prediction(
     reference_text: str,
     image_path,
     split: str | None = None,
+    metadata: dict[str, str] | None = None,
     alpha: float = 0.10,
     beta: float = 0.15,
-    gamma: float = 0.15,
 ) -> EvaluationResult:
-    raw_cer = character_error_rate(reference_text, predicted_text)
-    normalized_reference = normalize_ocr_text(reference_text)
-    normalized_predicted = normalize_ocr_text(predicted_text)
-    cer = character_error_rate(normalized_reference, normalized_predicted)
-    token_score = token_f1(reference_text, predicted_text)
+    metadata = metadata or {}
+    evaluation_mode = metadata.get("evaluation_mode", "default")
+
+    if evaluation_mode == "unordered_characters":
+        normalized_reference = normalize_unordered_text(reference_text)
+        normalized_predicted = normalize_unordered_text(predicted_text)
+        raw_cer = character_error_rate(normalized_reference, normalized_predicted)
+        cer = raw_cer
+        token_score = character_multiset_f1(reference_text, predicted_text)
+    else:
+        raw_cer = character_error_rate(reference_text, predicted_text)
+        normalized_reference = normalize_ocr_text(reference_text)
+        normalized_predicted = normalize_ocr_text(predicted_text)
+        cer = character_error_rate(normalized_reference, normalized_predicted)
+        token_score = token_f1(reference_text, predicted_text)
+
     base_score = 0.85 * (1.0 - cer) + 0.15 * token_score
     penalties = compute_penalties(
         predicted_text,
         reference_text=reference_text,
         alpha=alpha,
         beta=beta,
-        gamma=gamma,
     )
     total_score = base_score - penalties.total
     return EvaluationResult(
@@ -178,7 +200,6 @@ def aggregate_evaluations(results: Iterable[EvaluationResult], prompt_text: str)
         mean_token_f1=sum(row.token_f1 for row in rows) / sample_count,
         mean_base_score=sum(row.base_score for row in rows) / sample_count,
         mean_total_score=sum(row.total_score for row in rows) / sample_count,
-        non_korean_rate=sum(1 for row in rows if row.penalties.non_korean_mixed > 0) / sample_count,
+        chinese_rate=sum(1 for row in rows if row.penalties.chinese_mixed > 0) / sample_count,
         repetition_rate=sum(1 for row in rows if row.penalties.repetition > 0) / sample_count,
-        empty_rate=sum(1 for row in rows if row.penalties.empty_or_garbage > 0) / sample_count,
     )

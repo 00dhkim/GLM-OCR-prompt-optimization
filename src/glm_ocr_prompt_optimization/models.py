@@ -27,13 +27,12 @@ class OCRResult:
 
 @dataclass(slots=True)
 class PenaltyBreakdown:
-    non_korean_mixed: float
+    chinese_mixed: float
     repetition: float
-    empty_or_garbage: float
 
     @property
     def total(self) -> float:
-        return self.non_korean_mixed + self.repetition + self.empty_or_garbage
+        return self.chinese_mixed + self.repetition
 
 
 @dataclass(slots=True)
@@ -76,6 +75,22 @@ class AggregateEvaluation:
     mean_token_f1: float
     mean_base_score: float
     mean_total_score: float
-    non_korean_rate: float
+    chinese_rate: float
     repetition_rate: float
-    empty_rate: float
+
+
+@dataclass(slots=True)
+class TimingRecord:
+    event_type: str
+    stage: str
+    total_seconds: float
+    prompt_name: str | None = None
+    sample_id: str | None = None
+    image_path: Path | None = None
+    split: str | None = None
+    round_index: int | None = None
+    preprocess_seconds: float = 0.0
+    request_seconds: float = 0.0
+    evaluation_seconds: float = 0.0
+    sample_count: int = 0
+    attempt_count: int = 0

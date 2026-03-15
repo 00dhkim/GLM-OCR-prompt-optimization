@@ -6,7 +6,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Iterable
 
-from .models import AggregateEvaluation, EvaluationResult, OCRResult, PromptCandidate
+from .models import AggregateEvaluation, EvaluationResult, OCRResult, PromptCandidate, TimingRecord
 
 
 class ExperimentLogger:
@@ -52,4 +52,27 @@ class ExperimentLogger:
         with path.open("w", encoding="utf-8") as handle:
             for prompt in prompts:
                 handle.write(json.dumps(asdict(prompt), ensure_ascii=False) + "\n")
+        return path
+
+    def write_timings(self, rows: Iterable[TimingRecord], filename: str = "timings.jsonl") -> Path:
+        path = self.output_dir / filename
+        with path.open("w", encoding="utf-8") as handle:
+            for row in rows:
+                payload = asdict(row)
+                if row.image_path is not None:
+                    payload["image_path"] = str(row.image_path)
+                handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        return path
+
+    def write_timing_summary(self, rows: Iterable[TimingRecord], filename: str = "timing_summary.csv") -> Path:
+        path = self.output_dir / filename
+        fieldnames = list(TimingRecord.__dataclass_fields__.keys())
+        with path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in rows:
+                payload = asdict(row)
+                if row.image_path is not None:
+                    payload["image_path"] = str(row.image_path)
+                writer.writerow(payload)
         return path

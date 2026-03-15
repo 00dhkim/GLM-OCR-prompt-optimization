@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import random
+import time
 from dataclasses import asdict
 from pathlib import Path
 
@@ -10,7 +11,7 @@ from .config import Settings
 from .dataset import load_manifest
 from .logger import ExperimentLogger
 from .metrics import aggregate_evaluations, evaluate_prediction
-from .models import AggregateEvaluation, EvaluationResult, OCRResult, PenaltyBreakdown, PromptCandidate
+from .models import AggregateEvaluation, EvaluationResult, OCRResult, PenaltyBreakdown, PromptCandidate, TimingRecord
 from .ocr_client import OCRClient
 from .optimizer import PromptOptimizer
 from .prompts import default_seed_prompts
@@ -57,28 +58,63 @@ class ExperimentRunner:
         return dev_path, val_path
 
     def run_seed_evaluation(self, *, manifest_path: Path, output_dir: Path) -> tuple[list[AggregateEvaluation], PromptCandidate]:
+        stage_started_at = time.perf_counter()
         prompts = default_seed_prompts()
         logger = ExperimentLogger(output_dir)
         logger.write_prompt_catalog(prompts, filename="seed_prompts.jsonl")
 
         aggregate_rows: list[AggregateEvaluation] = []
+        timing_rows: list[TimingRecord] = []
         best_prompt = prompts[0]
         best_score = float("-inf")
 
         for prompt in prompts:
-            predictions, evaluations = self._evaluate_manifest(manifest_path=manifest_path, prompt=prompt)
+            prompt_started_at = time.perf_counter()
+            predictions, evaluations, sample_timings = self._evaluate_manifest(
+                manifest_path=manifest_path,
+                prompt=prompt,
+                stage="seed",
+            )
             prompt_dir = output_dir / prompt.name
             prompt_logger = ExperimentLogger(prompt_dir)
             prompt_logger.write_predictions(predictions)
             prompt_logger.write_evaluations(evaluations)
+            prompt_logger.write_timings(sample_timings)
             aggregate = aggregate_evaluations(evaluations, prompt.text)
             aggregate_rows.append(aggregate)
+            timing_rows.extend(sample_timings)
+            timing_rows.append(
+                TimingRecord(
+                    event_type="prompt_evaluation",
+                    stage="seed",
+                    prompt_name=prompt.name,
+                    total_seconds=time.perf_counter() - prompt_started_at,
+                    sample_count=len(sample_timings),
+                    preprocess_seconds=sum(row.preprocess_seconds for row in sample_timings),
+                    request_seconds=sum(row.request_seconds for row in sample_timings),
+                    evaluation_seconds=sum(row.evaluation_seconds for row in sample_timings),
+                    attempt_count=sum(row.attempt_count for row in sample_timings),
+                )
+            )
             if self._is_better_prompt(aggregate, prompt, best_score, best_prompt):
                 best_score = aggregate.mean_total_score
                 best_prompt = prompt
 
         logger.write_aggregate_csv(aggregate_rows, filename="seed_aggregate.csv")
         logger.write_prompt_file(best_prompt, filename="best_seed_prompt.txt")
+        timing_rows.append(
+            TimingRecord(
+                event_type="stage_total",
+                stage="seed",
+                total_seconds=time.perf_counter() - stage_started_at,
+                sample_count=sum(row.sample_count for row in timing_rows if row.event_type == "prompt_evaluation"),
+                preprocess_seconds=sum(row.preprocess_seconds for row in timing_rows if row.event_type == "prompt_evaluation"),
+                request_seconds=sum(row.request_seconds for row in timing_rows if row.event_type == "prompt_evaluation"),
+                evaluation_seconds=sum(row.evaluation_seconds for row in timing_rows if row.event_type == "prompt_evaluation"),
+                attempt_count=sum(row.attempt_count for row in timing_rows if row.event_type == "prompt_evaluation"),
+            )
+        )
+        logger.write_timing_summary(timing_rows, filename="timing_summary.csv")
         self._log_arize_many(aggregate_rows)
         return aggregate_rows, best_prompt
 
@@ -94,18 +130,42 @@ class ExperimentRunner:
         if self.optimizer is None:
             raise RuntimeError("OPENAI_API_KEY is required for optimization.")
 
+        stage_started_at = time.perf_counter()
         logger = ExperimentLogger(output_dir)
         current_prompt = starting_prompt or default_seed_prompts()[0]
         all_aggregates: list[AggregateEvaluation] = []
         all_candidates: list[PromptCandidate] = [current_prompt]
+        timing_rows: list[TimingRecord] = []
 
         for round_index in range(1, rounds + 1):
-            predictions, evaluations = self._evaluate_manifest(manifest_path=manifest_path, prompt=current_prompt)
+            prompt_started_at = time.perf_counter()
+            predictions, evaluations, sample_timings = self._evaluate_manifest(
+                manifest_path=manifest_path,
+                prompt=current_prompt,
+                stage="optimize",
+                round_index=round_index,
+            )
             aggregate = aggregate_evaluations(evaluations, current_prompt.text)
             round_dir = output_dir / f"round_{round_index:02d}"
             round_logger = ExperimentLogger(round_dir)
             round_logger.write_predictions(predictions)
             round_logger.write_evaluations(evaluations)
+            round_logger.write_timings(sample_timings)
+            timing_rows.extend(sample_timings)
+            timing_rows.append(
+                TimingRecord(
+                    event_type="prompt_evaluation",
+                    stage="optimize",
+                    round_index=round_index,
+                    prompt_name=current_prompt.name,
+                    total_seconds=time.perf_counter() - prompt_started_at,
+                    sample_count=len(sample_timings),
+                    preprocess_seconds=sum(row.preprocess_seconds for row in sample_timings),
+                    request_seconds=sum(row.request_seconds for row in sample_timings),
+                    evaluation_seconds=sum(row.evaluation_seconds for row in sample_timings),
+                    attempt_count=sum(row.attempt_count for row in sample_timings),
+                )
+            )
 
             sorted_failures = sorted(
                 evaluations,
@@ -124,6 +184,9 @@ class ExperimentRunner:
                 manifest_path=manifest_path,
                 output_dir=round_dir / "candidates",
                 candidates=generated,
+                stage="optimize",
+                round_index=round_index,
+                timing_rows=timing_rows,
             )
             current_prompt = winner
             all_candidates.extend(generated)
@@ -135,6 +198,19 @@ class ExperimentRunner:
         logger.write_aggregate_csv(all_aggregates, filename="optimization_aggregate.csv")
         logger.write_prompt_catalog(all_candidates, filename="all_candidates.jsonl")
         logger.write_prompt_file(current_prompt, filename="final_prompt.txt")
+        timing_rows.append(
+            TimingRecord(
+                event_type="stage_total",
+                stage="optimize",
+                total_seconds=time.perf_counter() - stage_started_at,
+                sample_count=sum(row.sample_count for row in timing_rows if row.event_type == "prompt_evaluation"),
+                preprocess_seconds=sum(row.preprocess_seconds for row in timing_rows if row.event_type == "prompt_evaluation"),
+                request_seconds=sum(row.request_seconds for row in timing_rows if row.event_type == "prompt_evaluation"),
+                evaluation_seconds=sum(row.evaluation_seconds for row in timing_rows if row.event_type == "prompt_evaluation"),
+                attempt_count=sum(row.attempt_count for row in timing_rows if row.event_type == "prompt_evaluation"),
+            )
+        )
+        logger.write_timing_summary(timing_rows, filename="timing_summary.csv")
         return current_prompt
 
     def validate(
@@ -144,16 +220,51 @@ class ExperimentRunner:
         output_dir: Path,
         prompts: list[PromptCandidate],
     ) -> list[AggregateEvaluation]:
+        stage_started_at = time.perf_counter()
         logger = ExperimentLogger(output_dir)
         aggregate_rows: list[AggregateEvaluation] = []
+        timing_rows: list[TimingRecord] = []
         for prompt in prompts:
-            predictions, evaluations = self._evaluate_manifest(manifest_path=manifest_path, prompt=prompt)
+            prompt_started_at = time.perf_counter()
+            predictions, evaluations, sample_timings = self._evaluate_manifest(
+                manifest_path=manifest_path,
+                prompt=prompt,
+                stage="validation",
+            )
             prompt_dir = output_dir / prompt.name
             prompt_logger = ExperimentLogger(prompt_dir)
             prompt_logger.write_predictions(predictions)
             prompt_logger.write_evaluations(evaluations)
+            prompt_logger.write_timings(sample_timings)
             aggregate_rows.append(aggregate_evaluations(evaluations, prompt.text))
+            timing_rows.extend(sample_timings)
+            timing_rows.append(
+                TimingRecord(
+                    event_type="prompt_evaluation",
+                    stage="validation",
+                    prompt_name=prompt.name,
+                    total_seconds=time.perf_counter() - prompt_started_at,
+                    sample_count=len(sample_timings),
+                    preprocess_seconds=sum(row.preprocess_seconds for row in sample_timings),
+                    request_seconds=sum(row.request_seconds for row in sample_timings),
+                    evaluation_seconds=sum(row.evaluation_seconds for row in sample_timings),
+                    attempt_count=sum(row.attempt_count for row in sample_timings),
+                )
+            )
         logger.write_aggregate_csv(aggregate_rows, filename="validation_aggregate.csv")
+        timing_rows.append(
+            TimingRecord(
+                event_type="stage_total",
+                stage="validation",
+                total_seconds=time.perf_counter() - stage_started_at,
+                sample_count=sum(row.sample_count for row in timing_rows if row.event_type == "prompt_evaluation"),
+                preprocess_seconds=sum(row.preprocess_seconds for row in timing_rows if row.event_type == "prompt_evaluation"),
+                request_seconds=sum(row.request_seconds for row in timing_rows if row.event_type == "prompt_evaluation"),
+                evaluation_seconds=sum(row.evaluation_seconds for row in timing_rows if row.event_type == "prompt_evaluation"),
+                attempt_count=sum(row.attempt_count for row in timing_rows if row.event_type == "prompt_evaluation"),
+            )
+        )
+        logger.write_timing_summary(timing_rows, filename="timing_summary.csv")
         self._log_arize_many(aggregate_rows)
         return aggregate_rows
 
@@ -182,9 +293,8 @@ class ExperimentRunner:
                 (baseline.mean_cer - final.mean_cer) / baseline.mean_cer if baseline.mean_cer else 0.0
             ),
             "stability_improvements": {
-                "non_korean_rate_delta": baseline.non_korean_rate - final.non_korean_rate,
+                "chinese_rate_delta": baseline.chinese_rate - final.chinese_rate,
                 "repetition_rate_delta": baseline.repetition_rate - final.repetition_rate,
-                "empty_rate_delta": baseline.empty_rate - final.empty_rate,
             },
             "adopted_prompt": {
                 "name": adopted_prompt.name,
@@ -203,19 +313,15 @@ class ExperimentRunner:
         final_prompt: PromptCandidate,
         baseline_eval: AggregateEvaluation,
         final_eval: AggregateEvaluation,
-        max_prompt_length: int = 240,
+        max_prompt_length: int = 1024,
         tie_margin: float = 0.01,
     ) -> tuple[PromptCandidate, str]:
         if len(final_prompt.text) > max_prompt_length:
             return baseline_prompt, "Rejected optimized prompt because it exceeded the prompt length limit."
 
         cer_improved = final_eval.mean_cer < baseline_eval.mean_cer
-        stability_improved = (
-            final_eval.non_korean_rate < baseline_eval.non_korean_rate
-            or final_eval.repetition_rate < baseline_eval.repetition_rate
-        )
-        if cer_improved and stability_improved:
-            return final_prompt, "Adopted optimized prompt because CER improved and at least one stability metric improved."
+        if cer_improved:
+            return final_prompt, "Adopted optimized prompt because CER improved on validation."
 
         score_gap = abs(final_eval.mean_total_score - baseline_eval.mean_total_score)
         if score_gap <= tie_margin:
@@ -230,18 +336,44 @@ class ExperimentRunner:
         manifest_path: Path,
         output_dir: Path,
         candidates: list[PromptCandidate],
+        stage: str,
+        round_index: int | None = None,
+        timing_rows: list[TimingRecord] | None = None,
     ) -> tuple[list[AggregateEvaluation], PromptCandidate]:
         aggregate_rows: list[AggregateEvaluation] = []
         best_prompt = candidates[0]
         best_score = float("-inf")
         for prompt in candidates:
-            predictions, evaluations = self._evaluate_manifest(manifest_path=manifest_path, prompt=prompt)
+            prompt_started_at = time.perf_counter()
+            predictions, evaluations, sample_timings = self._evaluate_manifest(
+                manifest_path=manifest_path,
+                prompt=prompt,
+                stage=stage,
+                round_index=round_index,
+            )
             prompt_dir = output_dir / prompt.name
             prompt_logger = ExperimentLogger(prompt_dir)
             prompt_logger.write_predictions(predictions)
             prompt_logger.write_evaluations(evaluations)
+            prompt_logger.write_timings(sample_timings)
             aggregate = aggregate_evaluations(evaluations, prompt.text)
             aggregate_rows.append(aggregate)
+            if timing_rows is not None:
+                timing_rows.extend(sample_timings)
+                timing_rows.append(
+                    TimingRecord(
+                        event_type="prompt_evaluation",
+                        stage=stage,
+                        round_index=round_index,
+                        prompt_name=prompt.name,
+                        total_seconds=time.perf_counter() - prompt_started_at,
+                        sample_count=len(sample_timings),
+                        preprocess_seconds=sum(row.preprocess_seconds for row in sample_timings),
+                        request_seconds=sum(row.request_seconds for row in sample_timings),
+                        evaluation_seconds=sum(row.evaluation_seconds for row in sample_timings),
+                        attempt_count=sum(row.attempt_count for row in sample_timings),
+                    )
+                )
             if self._is_better_prompt(aggregate, prompt, best_score, best_prompt):
                 best_score = aggregate.mean_total_score
                 best_prompt = prompt
@@ -252,13 +384,27 @@ class ExperimentRunner:
         *,
         manifest_path: Path,
         prompt: PromptCandidate,
-    ) -> tuple[list[OCRResult], list[EvaluationResult]]:
+        stage: str,
+        round_index: int | None = None,
+    ) -> tuple[list[OCRResult], list[EvaluationResult], list[TimingRecord]]:
         items = load_manifest(manifest_path)
         predictions: list[OCRResult] = []
         evaluations: list[EvaluationResult] = []
+        timings: list[TimingRecord] = []
 
         for item in items:
-            predicted_text = self.ocr_client.recognize_text(image_path=item.image_path, prompt=prompt.text)
+            sample_started_at = time.perf_counter()
+            ocr_result = self.ocr_client.recognize_text_with_timing if hasattr(self.ocr_client, "recognize_text_with_timing") else None
+            if ocr_result is not None:
+                predicted_text, ocr_timing = ocr_result(image_path=item.image_path, prompt=prompt.text)
+            else:
+                predicted_text = self.ocr_client.recognize_text(image_path=item.image_path, prompt=prompt.text)
+                ocr_timing = {
+                    "preprocess_seconds": 0.0,
+                    "request_seconds": 0.0,
+                    "attempt_count": 1,
+                    "total_seconds": 0.0,
+                }
             prediction = OCRResult(
                 sample_id=item.sample_id,
                 prompt_name=prompt.name,
@@ -270,6 +416,7 @@ class ExperimentRunner:
                 metadata=item.metadata,
             )
             predictions.append(prediction)
+            evaluation_started_at = time.perf_counter()
             evaluations.append(
                 evaluate_prediction(
                     sample_id=item.sample_id,
@@ -278,9 +425,28 @@ class ExperimentRunner:
                     reference_text=item.reference_text,
                     image_path=item.image_path,
                     split=item.split,
+                    metadata=item.metadata,
                 )
             )
-        return predictions, evaluations
+            evaluation_seconds = time.perf_counter() - evaluation_started_at
+            timings.append(
+                TimingRecord(
+                    event_type="sample_evaluation",
+                    stage=stage,
+                    prompt_name=prompt.name,
+                    sample_id=item.sample_id,
+                    image_path=item.image_path,
+                    split=item.split,
+                    round_index=round_index,
+                    total_seconds=time.perf_counter() - sample_started_at,
+                    preprocess_seconds=float(ocr_timing.get("preprocess_seconds", 0.0)),
+                    request_seconds=float(ocr_timing.get("request_seconds", 0.0)),
+                    evaluation_seconds=evaluation_seconds,
+                    sample_count=1,
+                    attempt_count=int(ocr_timing.get("attempt_count", 0)),
+                )
+            )
+        return predictions, evaluations, timings
 
     def _append_failure_report(self, path: Path, failures: list[EvaluationResult]) -> None:
         with path.open("w", encoding="utf-8") as handle:
@@ -297,9 +463,8 @@ class ExperimentRunner:
             "base_score": row.base_score,
             "total_score": row.total_score,
             "penalties": {
-                "non_korean_mixed": row.penalties.non_korean_mixed,
+                "chinese_mixed": row.penalties.chinese_mixed,
                 "repetition": row.penalties.repetition,
-                "empty_or_garbage": row.penalties.empty_or_garbage,
             },
             "predicted_text": row.predicted_text,
             "reference_text": row.reference_text,
@@ -329,9 +494,8 @@ class ExperimentRunner:
                         base_score=payload["base_score"],
                         total_score=payload["total_score"],
                         penalties=PenaltyBreakdown(
-                            non_korean_mixed=penalties["non_korean_mixed"],
+                            chinese_mixed=penalties["chinese_mixed"],
                             repetition=penalties["repetition"],
-                            empty_or_garbage=penalties["empty_or_garbage"],
                         ),
                         predicted_text=payload["predicted_text"],
                         reference_text=payload["reference_text"],

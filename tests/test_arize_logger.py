@@ -28,9 +28,8 @@ def _sample_aggregate() -> AggregateEvaluation:
         mean_token_f1=0.85,
         mean_base_score=0.8,
         mean_total_score=0.75,
-        non_korean_rate=0.1,
+        chinese_rate=0.1,
         repetition_rate=0.0,
-        empty_rate=0.0,
     )
 
 

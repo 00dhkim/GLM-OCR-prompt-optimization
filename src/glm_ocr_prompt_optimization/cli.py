@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import csv
+import json
 from pathlib import Path
 
 from .config import Settings
@@ -99,6 +101,10 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--dev-manifest", type=Path, required=True)
     run_parser.add_argument("--val-manifest", type=Path, required=True)
     run_parser.add_argument("--output-dir", type=Path, required=True)
+
+    timing_parser = subparsers.add_parser("summarize-timings")
+    timing_parser.add_argument("--run-dir", type=Path, required=True)
+    timing_parser.add_argument("--top-k", type=int, default=5)
 
     return parser
 
@@ -306,6 +312,10 @@ def main() -> None:
         print(f"adopted={adopted_prompt.name}")
         return
 
+    if args.command == "summarize-timings":
+        _print_timing_summary(run_dir=args.run_dir, top_k=args.top_k)
+        return
+
     parser.error(f"Unknown command: {args.command}")
 
 
@@ -326,7 +336,67 @@ def _format_aggregate(row: AggregateEvaluation) -> str:
     return (
         f"{row.prompt_name}: cer={row.mean_cer:.4f}, "
         f"score={row.mean_total_score:.4f}, "
-        f"non_korean={row.non_korean_rate:.2%}, "
-        f"repetition={row.repetition_rate:.2%}, "
-        f"empty={row.empty_rate:.2%}"
+        f"chinese={row.chinese_rate:.2%}, "
+        f"repetition={row.repetition_rate:.2%}"
     )
+
+
+def _print_timing_summary(*, run_dir: Path, top_k: int) -> None:
+    stage_rows = _load_stage_timing_rows(run_dir)
+    if not stage_rows:
+        print(f"no timing summaries found under {run_dir}")
+        return
+
+    print("stage totals:")
+    for row in stage_rows:
+        print(
+            f"{row['stage']}: total={float(row['total_seconds']):.2f}s, "
+            f"request={float(row['request_seconds']):.2f}s, "
+            f"preprocess={float(row['preprocess_seconds']):.2f}s, "
+            f"eval={float(row['evaluation_seconds']):.2f}s, "
+            f"attempts={int(float(row['attempt_count']))}"
+        )
+
+    prompt_rows = [row for row in stage_rows if row["event_type"] == "prompt_evaluation"]
+    if prompt_rows:
+        print("slow prompts:")
+        for row in sorted(prompt_rows, key=lambda item: float(item["total_seconds"]), reverse=True)[:top_k]:
+            print(
+                f"{row['stage']}:{row.get('prompt_name')}: total={float(row['total_seconds']):.2f}s, "
+                f"samples={int(float(row['sample_count']))}, "
+                f"request={float(row['request_seconds']):.2f}s"
+            )
+
+    sample_rows = _load_sample_timing_rows(run_dir)
+    if sample_rows:
+        print("slow samples:")
+        for row in sorted(sample_rows, key=lambda item: float(item["total_seconds"]), reverse=True)[:top_k]:
+            print(
+                f"{row['stage']}:{row.get('prompt_name')}:{row.get('sample_id')}: "
+                f"total={float(row['total_seconds']):.2f}s, "
+                f"request={float(row['request_seconds']):.2f}s, "
+                f"preprocess={float(row['preprocess_seconds']):.2f}s, "
+                f"eval={float(row['evaluation_seconds']):.2f}s, "
+                f"attempts={int(float(row['attempt_count']))}"
+            )
+
+
+def _load_stage_timing_rows(run_dir: Path) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for path in sorted(run_dir.glob("*/timing_summary.csv")):
+        with path.open("r", encoding="utf-8", newline="") as handle:
+            rows.extend(csv.DictReader(handle))
+    return rows
+
+
+def _load_sample_timing_rows(run_dir: Path) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for path in sorted(run_dir.rglob("timings.jsonl")):
+        with path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                if not line.strip():
+                    continue
+                payload = json.loads(line)
+                if payload.get("event_type") == "sample_evaluation":
+                    rows.append(payload)
+    return rows

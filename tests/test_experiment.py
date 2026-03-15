@@ -17,6 +17,14 @@ class FakeOCRClient:
             return "스타벅스 아메리카노 4500"
         return "漢字 abc"
 
+    def recognize_text_with_timing(self, *, image_path: Path, prompt: str):
+        return self.recognize_text(image_path=image_path, prompt=prompt), {
+            "preprocess_seconds": 0.01,
+            "request_seconds": 0.02,
+            "attempt_count": 1,
+            "total_seconds": 0.03,
+        }
+
 
 class FakeOptimizer:
     def generate_candidates(self, **kwargs):
@@ -71,6 +79,8 @@ def test_seed_evaluation_picks_best_prompt(tmp_path: Path) -> None:
     assert len(rows) == 4
     assert best_prompt.name in {"P1", "P2", "P3"}
     assert any("Chinese characters" in row.prompt_text or row.prompt_name == "P1" for row in rows)
+    assert (tmp_path / "seed" / "timing_summary.csv").exists()
+    assert (tmp_path / "seed" / "P0" / "timings.jsonl").exists()
 
 
 def test_optimize_writes_final_prompt(tmp_path: Path) -> None:
@@ -90,6 +100,8 @@ def test_optimize_writes_final_prompt(tmp_path: Path) -> None:
 
     assert "Do not translate" in final_prompt.text
     assert (tmp_path / "optimize" / "final_prompt.txt").exists()
+    assert (tmp_path / "optimize" / "timing_summary.csv").exists()
+    assert (tmp_path / "optimize" / "round_01" / "timings.jsonl").exists()
 
 
 def test_build_report_creates_json(tmp_path: Path) -> None:
@@ -98,7 +110,7 @@ def test_build_report_creates_json(tmp_path: Path) -> None:
     evaluation_path.write_text(
         (
             '{"sample_id":"s1","prompt_name":"final","raw_cer":0.1,"cer":0.1,"token_f1":1.0,"base_score":0.9,"total_score":0.9,'
-            '"penalties":{"non_korean_mixed":0.0,"repetition":0.0,"empty_or_garbage":0.0},'
+            '"penalties":{"chinese_mixed":0.0,"repetition":0.0},'
             '"predicted_text":"합계 12000","reference_text":"합계 12000","image_path":"sample.png","split":"val"}\n'
         ),
         encoding="utf-8",
@@ -113,9 +125,8 @@ def test_build_report_creates_json(tmp_path: Path) -> None:
         mean_token_f1=0.5,
         mean_base_score=0.5,
         mean_total_score=0.4,
-        non_korean_rate=0.5,
+        chinese_rate=0.5,
         repetition_rate=0.5,
-        empty_rate=0.0,
     )
     final = AggregateEvaluation(
         prompt_name="final",
@@ -126,9 +137,8 @@ def test_build_report_creates_json(tmp_path: Path) -> None:
         mean_token_f1=1.0,
         mean_base_score=0.9,
         mean_total_score=0.9,
-        non_korean_rate=0.0,
+        chinese_rate=0.0,
         repetition_rate=0.0,
-        empty_rate=0.0,
     )
 
     report_path = runner.build_report(
@@ -156,9 +166,8 @@ def test_select_adopted_prompt_falls_back_to_baseline_when_final_is_worse(tmp_pa
         mean_token_f1=0.8,
         mean_base_score=0.7,
         mean_total_score=0.69,
-        non_korean_rate=0.01,
+        chinese_rate=0.01,
         repetition_rate=0.0,
-        empty_rate=0.01,
     )
     final = AggregateEvaluation(
         prompt_name="final",
@@ -169,9 +178,8 @@ def test_select_adopted_prompt_falls_back_to_baseline_when_final_is_worse(tmp_pa
         mean_token_f1=0.4,
         mean_base_score=0.4,
         mean_total_score=0.39,
-        non_korean_rate=0.0,
+        chinese_rate=0.0,
         repetition_rate=0.0,
-        empty_rate=0.02,
     )
 
     adopted, reason = runner.select_adopted_prompt(
@@ -183,3 +191,82 @@ def test_select_adopted_prompt_falls_back_to_baseline_when_final_is_worse(tmp_pa
 
     assert adopted.name == "baseline"
     assert "Rejected optimized prompt" in reason
+
+
+def test_select_adopted_prompt_adopts_final_when_cer_improves_even_without_stability_gain(tmp_path: Path) -> None:
+    runner = ExperimentRunner(_build_settings(tmp_path))
+    baseline_prompt = PromptCandidate(name="baseline", text="Text Recognition:")
+    final_prompt = PromptCandidate(name="final", text="optimized")
+    baseline = AggregateEvaluation(
+        prompt_name="baseline",
+        prompt_text=baseline_prompt.text,
+        sample_count=100,
+        mean_raw_cer=0.3,
+        mean_cer=0.3,
+        mean_token_f1=0.8,
+        mean_base_score=0.7,
+        mean_total_score=0.72,
+        chinese_rate=0.0,
+        repetition_rate=0.0,
+    )
+    final = AggregateEvaluation(
+        prompt_name="final",
+        prompt_text=final_prompt.text,
+        sample_count=100,
+        mean_raw_cer=0.2,
+        mean_cer=0.2,
+        mean_token_f1=0.75,
+        mean_base_score=0.76,
+        mean_total_score=0.70,
+        chinese_rate=0.05,
+        repetition_rate=0.05,
+    )
+
+    adopted, reason = runner.select_adopted_prompt(
+        baseline_prompt=baseline_prompt,
+        final_prompt=final_prompt,
+        baseline_eval=baseline,
+        final_eval=final,
+    )
+
+    assert adopted.name == "final"
+    assert reason == "Adopted optimized prompt because CER improved on validation."
+
+
+def test_select_adopted_prompt_allows_prompts_up_to_1024_chars(tmp_path: Path) -> None:
+    runner = ExperimentRunner(_build_settings(tmp_path))
+    baseline_prompt = PromptCandidate(name="baseline", text="Text Recognition:")
+    final_prompt = PromptCandidate(name="final", text="x" * 1024)
+    baseline = AggregateEvaluation(
+        prompt_name="baseline",
+        prompt_text=baseline_prompt.text,
+        sample_count=1,
+        mean_raw_cer=0.3,
+        mean_cer=0.3,
+        mean_token_f1=0.8,
+        mean_base_score=0.7,
+        mean_total_score=0.7,
+        chinese_rate=0.0,
+        repetition_rate=0.0,
+    )
+    final = AggregateEvaluation(
+        prompt_name="final",
+        prompt_text=final_prompt.text,
+        sample_count=1,
+        mean_raw_cer=0.2,
+        mean_cer=0.2,
+        mean_token_f1=0.85,
+        mean_base_score=0.8,
+        mean_total_score=0.8,
+        chinese_rate=0.0,
+        repetition_rate=0.0,
+    )
+
+    adopted, _ = runner.select_adopted_prompt(
+        baseline_prompt=baseline_prompt,
+        final_prompt=final_prompt,
+        baseline_eval=baseline,
+        final_eval=final,
+    )
+
+    assert adopted.name == "final"

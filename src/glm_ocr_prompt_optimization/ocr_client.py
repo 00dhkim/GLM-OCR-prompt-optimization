@@ -2,25 +2,32 @@ from __future__ import annotations
 
 import base64
 import io
+import time
 from pathlib import Path
 
-from openai import InternalServerError, OpenAI
+from openai import APIConnectionError, APITimeoutError, InternalServerError, OpenAI
 from PIL import Image
 
 
 class OCRClient:
     def __init__(self, *, base_url: str, api_key: str, model: str) -> None:
-        self._client = OpenAI(base_url=base_url, api_key=api_key)
+        self._client = OpenAI(base_url=base_url, api_key=api_key, timeout=45.0)
         self._model = model
 
     def recognize_text(self, *, image_path: Path, prompt: str) -> str:
+        text, _ = self.recognize_text_with_timing(image_path=image_path, prompt=prompt)
+        return text
+
+    def recognize_text_with_timing(self, *, image_path: Path, prompt: str) -> tuple[str, dict[str, float | int | str]]:
+        started_at = time.perf_counter()
         with Image.open(image_path) as image:
             image = image.convert("RGB")
             if self._should_chunk_line_image(image):
-                return self._recognize_chunked_line(image=image, prompt=prompt)
-
-            mime_type, encoded = self._encode_prepared_image(self._prepare_image(image))
-            return self._request_text(prompt=prompt, mime_type=mime_type, encoded=encoded)
+                text, details = self._recognize_chunked_line(image=image, prompt=prompt)
+            else:
+                text, details = self._recognize_with_fallback(image=image, prompt=prompt)
+        details["total_seconds"] = time.perf_counter() - started_at
+        return text, details
 
     def _encode_image(self, image_path: Path, max_dimension: int = 1600) -> tuple[str, str]:
         with Image.open(image_path) as image:
@@ -30,6 +37,10 @@ class OCRClient:
     def _prepare_image(self, image: Image.Image, *, max_dimension: int = 1600) -> Image.Image:
         image = image.convert("RGB")
         width, height = image.size
+
+        # Full-page documents remain expensive even after default resizing.
+        if width >= 2000 and height >= 2800:
+            max_dimension = min(max_dimension, 1200)
 
         # Extremely wide line images collapse to unreadable heights when resized directly.
         if height > 0 and width / height > 12 and height < 192:
@@ -68,22 +79,67 @@ class OCRClient:
         )
         return (response.choices[0].message.content or "").strip()
 
+    def _recognize_with_fallback(self, *, image: Image.Image, prompt: str) -> tuple[str, dict[str, float | int | str]]:
+        preprocess_seconds = 0.0
+        request_seconds = 0.0
+        attempts = 0
+        for max_dimension in (1600, 1200, 1024, 800):
+            preprocess_started_at = time.perf_counter()
+            prepared = self._prepare_image(image, max_dimension=max_dimension)
+            preprocess_seconds += time.perf_counter() - preprocess_started_at
+            mime_type, encoded = self._encode_prepared_image(prepared)
+            attempts += 1
+            try:
+                request_started_at = time.perf_counter()
+                text = self._request_text(prompt=prompt, mime_type=mime_type, encoded=encoded)
+                request_seconds += time.perf_counter() - request_started_at
+                return text, {
+                    "preprocess_seconds": preprocess_seconds,
+                    "request_seconds": request_seconds,
+                    "attempt_count": attempts,
+                    "status": "ok",
+                }
+            except (APITimeoutError, APIConnectionError, InternalServerError):
+                request_seconds += time.perf_counter() - request_started_at
+                continue
+        return "", {
+            "preprocess_seconds": preprocess_seconds,
+            "request_seconds": request_seconds,
+            "attempt_count": attempts,
+            "status": "empty_after_retries",
+        }
+
     def _should_chunk_line_image(self, image: Image.Image) -> bool:
         width, height = image.size
         return height > 0 and height <= 64 and width / height > 80
 
-    def _recognize_chunked_line(self, *, image: Image.Image, prompt: str) -> str:
+    def _recognize_chunked_line(self, *, image: Image.Image, prompt: str) -> tuple[str, dict[str, float | int | str]]:
+        preprocess_started_at = time.perf_counter()
         prepared = self._prepare_image(image, max_dimension=max(image.size[0], image.size[1]))
+        preprocess_seconds = time.perf_counter() - preprocess_started_at
         segments = self._split_wide_image(prepared)
         outputs: list[str] = []
+        request_seconds = 0.0
+        attempts = 0
         for segment in segments:
+            preprocess_started_at = time.perf_counter()
             segment = self._prepare_image(segment)
+            preprocess_seconds += time.perf_counter() - preprocess_started_at
             mime_type, encoded = self._encode_prepared_image(segment)
+            attempts += 1
             try:
+                request_started_at = time.perf_counter()
                 outputs.append(self._request_text(prompt=prompt, mime_type=mime_type, encoded=encoded))
-            except InternalServerError:
+                request_seconds += time.perf_counter() - request_started_at
+            except (APITimeoutError, APIConnectionError, InternalServerError):
+                request_seconds += time.perf_counter() - request_started_at
                 continue
-        return self._merge_text_segments(outputs).strip()
+        return self._merge_text_segments(outputs).strip(), {
+            "preprocess_seconds": preprocess_seconds,
+            "request_seconds": request_seconds,
+            "attempt_count": attempts,
+            "status": "ok" if outputs else "empty_after_retries",
+        }
 
     def _split_wide_image(self, image: Image.Image, *, max_chunk_width: int = 1400, overlap: int = 160) -> list[Image.Image]:
         width, height = image.size

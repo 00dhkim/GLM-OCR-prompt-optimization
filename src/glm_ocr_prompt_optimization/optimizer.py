@@ -90,9 +90,8 @@ class FailureExample:
     raw_cer: float
     cer: float
     token_f1: float
-    non_korean_penalty: float
+    chinese_penalty: float
     repetition_penalty: float
-    empty_penalty: float
 
 
 class PromptOptimizer:
@@ -254,9 +253,8 @@ class PromptOptimizer:
                     raw_cer=row.raw_cer,
                     cer=row.cer,
                     token_f1=row.token_f1,
-                    non_korean_penalty=row.penalties.non_korean_mixed,
+                    chinese_penalty=row.penalties.chinese_mixed,
                     repetition_penalty=row.penalties.repetition,
-                    empty_penalty=row.penalties.empty_or_garbage,
                 )
             )
             for row in failures
@@ -266,9 +264,8 @@ class PromptOptimizer:
         if not failures:
             return {
                 "count_considered": 0,
-                "high_non_korean_count": 0,
+                "high_chinese_count": 0,
                 "high_repetition_count": 0,
-                "empty_or_garbage_count": 0,
                 "avg_prediction_length": 0.0,
                 "avg_reference_length": 0.0,
                 "avg_raw_cer": 0.0,
@@ -280,12 +277,10 @@ class PromptOptimizer:
         avg_prediction_length = sum(len(row.predicted_text) for row in failures) / len(failures)
         avg_reference_length = sum(len(row.reference_text) for row in failures) / len(failures)
         modes = []
-        if any(row.penalties.non_korean_mixed > 0 for row in failures):
-            modes.append("non-target-script contamination")
+        if any(row.penalties.chinese_mixed > 0 for row in failures):
+            modes.append("unexpected Chinese character contamination")
         if any(row.penalties.repetition > 0 for row in failures):
             modes.append("repetition or rambling output")
-        if any(row.penalties.empty_or_garbage > 0 for row in failures):
-            modes.append("empty or garbage output")
         if any(len(row.predicted_text) > len(row.reference_text) * 1.5 for row in failures if row.reference_text):
             modes.append("prediction longer than reference")
         if not modes:
@@ -293,9 +288,8 @@ class PromptOptimizer:
 
         return {
             "count_considered": len(failures),
-            "high_non_korean_count": sum(1 for row in failures if row.penalties.non_korean_mixed > 0),
+            "high_chinese_count": sum(1 for row in failures if row.penalties.chinese_mixed > 0),
             "high_repetition_count": sum(1 for row in failures if row.penalties.repetition > 0),
-            "empty_or_garbage_count": sum(1 for row in failures if row.penalties.empty_or_garbage > 0),
             "avg_prediction_length": round(avg_prediction_length, 2),
             "avg_reference_length": round(avg_reference_length, 2),
             "avg_raw_cer": round(sum(row.raw_cer for row in failures) / len(failures), 4),

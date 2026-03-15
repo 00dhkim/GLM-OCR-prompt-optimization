@@ -18,9 +18,8 @@ def _aggregate() -> AggregateEvaluation:
         mean_token_f1=0.6,
         mean_base_score=0.6,
         mean_total_score=0.55,
-        non_korean_rate=0.33,
+        chinese_rate=0.33,
         repetition_rate=0.33,
-        empty_rate=0.0,
     )
 
 
@@ -34,7 +33,7 @@ def _failures() -> list[EvaluationResult]:
             token_f1=0.0,
             base_score=0.2,
             total_score=0.0,
-            penalties=PenaltyBreakdown(non_korean_mixed=0.2, repetition=0.0, empty_or_garbage=0.0),
+            penalties=PenaltyBreakdown(chinese_mixed=0.2, repetition=0.0),
             predicted_text="漢字 abc",
             reference_text="스타벅스",
             image_path=Path("sample.png"),
@@ -48,7 +47,7 @@ def _failures() -> list[EvaluationResult]:
             token_f1=0.2,
             base_score=0.3,
             total_score=0.0,
-            penalties=PenaltyBreakdown(non_korean_mixed=0.0, repetition=0.2, empty_or_garbage=0.0),
+            penalties=PenaltyBreakdown(chinese_mixed=0.0, repetition=0.2),
             predicted_text="합계 합계 합계 합계",
             reference_text="합계",
             image_path=Path("sample.png"),
@@ -71,9 +70,9 @@ def test_build_analysis_payload_prefers_english_context_and_failure_summary() ->
     )
 
     assert "Analyze why the OCR prompt is underperforming" in payload["task"]
-    assert payload["failure_summary"]["high_non_korean_count"] == 1
+    assert payload["failure_summary"]["high_chinese_count"] == 1
     assert payload["failure_summary"]["high_repetition_count"] == 1
-    assert "non-target-script contamination" in payload["failure_summary"]["common_failure_modes"]
+    assert "unexpected Chinese character contamination" in payload["failure_summary"]["common_failure_modes"]
     assert "Chinese-character substitution" in payload["failure_summary"]["example_warning"]
 
 

@@ -47,9 +47,8 @@ class ArizeLogger:
                 "mean_token_f1": aggregate.mean_token_f1,
                 "mean_base_score": aggregate.mean_base_score,
                 "mean_total_score": aggregate.mean_total_score,
-                "non_korean_rate": aggregate.non_korean_rate,
+                "chinese_rate": aggregate.chinese_rate,
                 "repetition_rate": aggregate.repetition_rate,
-                "empty_rate": aggregate.empty_rate,
             },
             "tags": {
                 "source": "glm-ocr-prompt-optimization",
