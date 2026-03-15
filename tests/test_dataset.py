@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from glm_ocr_prompt_optimization.dataset import (
     _cord_ground_truth_to_text,
     _infer_extension_from_url,
@@ -11,6 +13,8 @@ from glm_ocr_prompt_optimization.dataset import (
     merge_manifests,
     stratified_split_items,
 )
+
+pytestmark = pytest.mark.unit
 
 
 def test_load_manifest_reads_jsonl(tmp_path: Path) -> None:

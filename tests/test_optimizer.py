@@ -1,7 +1,11 @@
 from pathlib import Path
 
+import pytest
+
 from glm_ocr_prompt_optimization.models import AggregateEvaluation, EvaluationResult, PenaltyBreakdown, PromptCandidate
 from glm_ocr_prompt_optimization.optimizer import PromptOptimizer
+
+pytestmark = pytest.mark.unit
 
 
 def _aggregate() -> AggregateEvaluation:

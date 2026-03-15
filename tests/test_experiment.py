@@ -1,8 +1,12 @@
 from pathlib import Path
 
+import pytest
+
 from glm_ocr_prompt_optimization.config import Settings
 from glm_ocr_prompt_optimization.experiment import ExperimentRunner
 from glm_ocr_prompt_optimization.models import AggregateEvaluation, EvaluationResult, PenaltyBreakdown, PromptCandidate
+
+pytestmark = pytest.mark.integration
 
 
 class FakeOCRClient:

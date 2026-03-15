@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from PIL import Image
+import pytest
 
 from glm_ocr_prompt_optimization.ocr_client import OCRClient
+
+pytestmark = pytest.mark.integration
 
 
 def test_prepare_image_pads_ultra_wide_line_before_resize() -> None:

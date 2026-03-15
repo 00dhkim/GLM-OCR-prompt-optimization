@@ -248,6 +248,7 @@ def main() -> None:
         return
 
     if args.command == "run-all":
+        args.output_dir.mkdir(parents=True, exist_ok=True)
         seed_rows, best_seed = runner.run_seed_evaluation(
             manifest_path=args.dev_manifest,
             output_dir=args.output_dir / "seed",

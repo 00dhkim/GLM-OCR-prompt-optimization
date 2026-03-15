@@ -1,3 +1,5 @@
+import pytest
+
 from glm_ocr_prompt_optimization.metrics import (
     character_error_rate,
     compute_penalties,
@@ -5,6 +7,8 @@ from glm_ocr_prompt_optimization.metrics import (
     normalize_ocr_text,
     token_f1,
 )
+
+pytestmark = pytest.mark.unit
 
 
 def test_character_error_rate_zero_for_exact_match() -> None:

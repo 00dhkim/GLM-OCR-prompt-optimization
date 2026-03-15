@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from glm_ocr_prompt_optimization.arize_logger import ArizeLogger
 from glm_ocr_prompt_optimization.models import AggregateEvaluation
+
+pytestmark = pytest.mark.integration
 
 
 class _FakeResponse:

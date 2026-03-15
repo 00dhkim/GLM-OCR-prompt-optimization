@@ -23,6 +23,10 @@ glm-ocr-opt = "glm_ocr_prompt_optimization.cli:main"
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+markers = [
+  "unit: fast isolated tests for pure logic and local helpers",
+  "integration: end-to-end or multi-component workflow tests",
+]
 
 [tool.uv]
 package = true
