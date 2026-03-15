@@ -17,7 +17,8 @@ def default_seed_prompts() -> list[PromptCandidate]:
                 "Text Recognition:\n"
                 "Transcribe only the visible text.\n"
                 "Output plain text only.\n"
-                "Do not translate, correct, or guess."
+                "Do not translate, correct, or guess.\n"
+                "Do not substitute Korean text with Chinese characters or other scripts."
             ),
             rationale="Adds explicit no-translation, no-correction, and no-guess rules.",
         ),
@@ -28,6 +29,7 @@ def default_seed_prompts() -> list[PromptCandidate]:
                 "Read the image and transcribe only the visible text in plain text.\n"
                 "Preserve the observed reading order and line breaks when clear.\n"
                 "Do not translate, explain, normalize, or guess missing characters.\n"
+                "Do not substitute Korean text with Chinese characters or other scripts.\n"
                 "If part of the text is unclear, keep only the visible portion.\n"
                 "Do not repeat text."
             ),

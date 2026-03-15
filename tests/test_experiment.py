@@ -66,6 +66,7 @@ def test_seed_evaluation_picks_best_prompt(tmp_path: Path) -> None:
 
     assert len(rows) == 4
     assert best_prompt.name in {"P1", "P2", "P3"}
+    assert any("Chinese characters" in row.prompt_text or row.prompt_name == "P1" for row in rows)
 
 
 def test_optimize_writes_final_prompt(tmp_path: Path) -> None:

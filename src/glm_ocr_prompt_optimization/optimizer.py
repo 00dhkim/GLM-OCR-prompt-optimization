@@ -27,17 +27,19 @@ Strong candidates usually:
 - say to transcribe only visible text
 - require plain text output only
 - forbid translation, correction, normalization, and guessing
+- forbid substituting Korean text with Chinese characters or other scripts
 - preserve reading order and line breaks when visually clear
 - forbid repeated text
+- forbid placeholders such as [unclear], [unreadable], or invented markers
 """
 
 FALLBACK_ANALYSIS = {
     "issues": [
         {
-            "name": "character substitution or ordering errors",
+            "name": "character substitution, ordering errors, or script contamination",
             "severity": "medium",
             "evidence": "Top failures show mismatched characters despite non-empty output.",
-            "instruction": "Use a short transcription-only prompt and avoid interpretation.",
+            "instruction": "Use a short transcription-only prompt, avoid interpretation, and forbid Chinese-character substitution.",
         }
     ],
     "keep": ["The task should stay plain-text OCR only."],
@@ -211,14 +213,18 @@ class PromptOptimizer:
                     "Transcribe only visible text.",
                     "Output plain text only.",
                     "Do not translate, correct, normalize, or guess.",
+                    "Do not substitute Korean text with Chinese characters or other scripts.",
                     "Preserve reading order and line breaks when visually clear.",
                     "Avoid repeated text.",
+                    "If some text is unclear, keep only the visible portion and do not insert placeholders.",
                 ],
                 "avoid": [
                     "JSON or structured extraction requests",
                     "Long task descriptions",
                     "Language-specific wording without evidence",
                     "Requests to infer missing or occluded text",
+                    "Chinese-character or Hanzi substitution for Korean text",
+                    "Placeholders such as [unclear], [unreadable], ???, or invented markers",
                 ],
             },
             "constraints": [
@@ -226,6 +232,9 @@ class PromptOptimizer:
                 "Focus on transcription rules only.",
                 "Preserve plain text OCR behavior.",
                 "Do not drift far from the current prompt unless failures strongly justify it.",
+                "Do not substitute Korean text with Chinese characters or Hanzi.",
+                "Do not use placeholders or bracketed markers for unreadable text.",
+                "If text is unclear, prefer omitting the unreadable part over inventing substitute markers.",
                 f"Return exactly {count} candidates.",
             ],
             "current_prompt": current_prompt.text,
@@ -293,6 +302,7 @@ class PromptOptimizer:
             "avg_normalized_cer": round(sum(row.cer for row in failures) / len(failures), 4),
             "avg_token_f1": round(sum(row.token_f1 for row in failures) / len(failures), 4),
             "common_failure_modes": modes,
+            "example_warning": "If Korean text is present, avoid Chinese-character substitution such as Hanzi output.",
         }
 
     def _parse_and_rank_candidates(self, content: str, *, count: int) -> list[PromptCandidate]:
@@ -313,7 +323,14 @@ class PromptOptimizer:
                 )
             )
 
-        parsed.sort(key=lambda candidate: (not self._is_english_first(candidate.text), len(candidate.text)))
+        parsed = [candidate for candidate in parsed if not self._contains_placeholder(candidate.text)]
+        parsed.sort(
+            key=lambda candidate: (
+                not self._is_english_first(candidate.text),
+                self._contains_placeholder(candidate.text),
+                len(candidate.text),
+            )
+        )
 
         for fallback in FALLBACK_CANDIDATES:
             if len(parsed) >= count:
@@ -345,6 +362,11 @@ class PromptOptimizer:
         if not normalized.startswith("Text Recognition:"):
             normalized = f"Text Recognition:\n{normalized}"
         return normalized
+
+    def _contains_placeholder(self, text: str) -> bool:
+        lowered = text.lower()
+        markers = ("[unclear]", "[unreadable]", "[illegible]", "???", "<unclear>", "<unreadable>")
+        return any(marker in lowered for marker in markers)
 
     def _is_english_first(self, text: str) -> bool:
         letters = [char for char in text if char.isalpha()]

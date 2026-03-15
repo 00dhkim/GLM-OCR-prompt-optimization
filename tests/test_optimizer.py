@@ -70,6 +70,7 @@ def test_build_analysis_payload_prefers_english_context_and_failure_summary() ->
     assert payload["failure_summary"]["high_non_korean_count"] == 1
     assert payload["failure_summary"]["high_repetition_count"] == 1
     assert "non-target-script contamination" in payload["failure_summary"]["common_failure_modes"]
+    assert "Chinese-character substitution" in payload["failure_summary"]["example_warning"]
 
 
 def test_parse_and_rank_candidates_prioritizes_english_and_adds_fallbacks() -> None:
@@ -78,6 +79,7 @@ def test_parse_and_rank_candidates_prioritizes_english_and_adds_fallbacks() -> N
     {
       "candidates": [
         {"name": "K1", "text": "보이는 글자를 그대로 전사하라.", "rationale": "korean"},
+        {"name": "BAD", "text": "Text Recognition:\\nUse [unclear] for unreadable text.", "rationale": "placeholder"},
         {"name": "E1", "text": "Text Recognition:\\nTranscribe only the visible text. Do not translate.", "rationale": "english"}
       ]
     }
@@ -89,4 +91,5 @@ def test_parse_and_rank_candidates_prioritizes_english_and_adds_fallbacks() -> N
     assert candidates[0].text.startswith("Text Recognition:")
     assert "\n" in candidates[0].text
     assert "Transcribe only the visible text" in candidates[0].text
+    assert all("[unclear]" not in candidate.text.lower() for candidate in candidates)
     assert any(candidate.name.startswith("ENG-F") for candidate in candidates)
