@@ -23,6 +23,7 @@ Return strict JSON with a top-level key named "candidates".
 Each candidate must contain "name", "text", and "rationale".
 Prefer concise prompts written in English.
 The prompt is for transcription only, not extraction or JSON formatting.
+Each candidate prompt must be at most 1024 characters long, including the "Text Recognition:" prefix.
 Strong candidates usually:
 - say to transcribe only visible text
 - require plain text output only
@@ -81,6 +82,8 @@ FALLBACK_CANDIDATES = [
     ),
 ]
 
+MAX_PROMPT_LENGTH = 1024
+
 
 @dataclass(slots=True)
 class FailureExample:
@@ -125,17 +128,35 @@ class PromptOptimizer:
         )
 
         try:
-            response = self._client.responses.create(
-                model=self._model,
-                reasoning={"effort": "minimal"},
-                input=[
-                    {"role": "system", "content": OPTIMIZER_SYSTEM_PROMPT},
-                    {"role": "user", "content": json.dumps(request_payload, ensure_ascii=False)},
-                ],
-            )
-            return self._parse_and_rank_candidates(response.output_text.strip(), count=count)
+            response_text = self._request_candidates(request_payload)
+            candidates = self._parse_and_rank_candidates(response_text.strip(), count=count, fill_fallbacks=False)
+            if len(candidates) < count:
+                retry_payload = self._build_regeneration_payload(
+                    base_payload=request_payload,
+                    accepted_candidates=candidates,
+                    shortage=count - len(candidates),
+                )
+                retry_text = self._request_candidates(retry_payload)
+                merged = self._merge_candidates(
+                    existing=candidates,
+                    incoming=self._parse_and_rank_candidates(retry_text.strip(), count=count, fill_fallbacks=False),
+                    count=count,
+                )
+                return merged
+            return self._merge_candidates(existing=candidates, incoming=[], count=count)
         except Exception:
             return self._fallback_candidates(count)
+
+    def _request_candidates(self, payload: dict[str, object]) -> str:
+        response = self._client.responses.create(
+            model=self._model,
+            reasoning={"effort": "minimal"},
+            input=[
+                {"role": "system", "content": OPTIMIZER_SYSTEM_PROMPT},
+                {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+            ],
+        )
+        return response.output_text
 
     def _analyze_failures(
         self,
@@ -234,6 +255,7 @@ class PromptOptimizer:
                 "Do not substitute Korean text with Chinese characters or Hanzi.",
                 "Do not use placeholders or bracketed markers for unreadable text.",
                 "If text is unclear, prefer omitting the unreadable part over inventing substitute markers.",
+                f"Each candidate prompt must be at most {MAX_PROMPT_LENGTH} characters long, including the prefix.",
                 f"Return exactly {count} candidates.",
             ],
             "current_prompt": current_prompt.text,
@@ -242,6 +264,27 @@ class PromptOptimizer:
             "failure_examples": failure_payload,
             "analysis": analysis,
         }
+
+    def _build_regeneration_payload(
+        self,
+        *,
+        base_payload: dict[str, object],
+        accepted_candidates: list[PromptCandidate],
+        shortage: int,
+    ) -> dict[str, object]:
+        payload = dict(base_payload)
+        payload["task"] = "Generate replacement OCR prompt candidates to fill the missing slots."
+        payload["constraints"] = [
+            *list(base_payload.get("constraints", [])),
+            f"Return exactly {shortage} replacement candidates.",
+            "Do not repeat any accepted candidate text.",
+            "If a previous candidate was too long, rewrite it into a shorter prompt instead of expanding it.",
+        ]
+        payload["accepted_candidates"] = [
+            {"name": candidate.name, "text": candidate.text, "length": len(candidate.text)}
+            for candidate in accepted_candidates
+        ]
+        return payload
 
     def _failure_payload(self, failures: list[EvaluationResult]) -> list[dict[str, object]]:
         return [
@@ -299,7 +342,13 @@ class PromptOptimizer:
             "example_warning": "If Korean text is present, avoid Chinese-character substitution such as Hanzi output.",
         }
 
-    def _parse_and_rank_candidates(self, content: str, *, count: int) -> list[PromptCandidate]:
+    def _parse_and_rank_candidates(
+        self,
+        content: str,
+        *,
+        count: int,
+        fill_fallbacks: bool = True,
+    ) -> list[PromptCandidate]:
         payload = json.loads(content)
         parsed: list[PromptCandidate] = []
         seen_texts: set[str] = set()
@@ -307,6 +356,8 @@ class PromptOptimizer:
         for index, item in enumerate(payload["candidates"], start=1):
             text = self._normalize_prompt_text(item["text"])
             if not text or text in seen_texts:
+                continue
+            if len(text) > MAX_PROMPT_LENGTH:
                 continue
             seen_texts.add(text)
             parsed.append(
@@ -326,22 +377,49 @@ class PromptOptimizer:
             )
         )
 
-        for fallback in FALLBACK_CANDIDATES:
-            if len(parsed) >= count:
-                break
-            normalized = self._normalize_prompt_text(fallback.text)
-            if normalized in seen_texts:
-                continue
-            seen_texts.add(normalized)
-            parsed.append(
-                PromptCandidate(
-                    name=fallback.name,
-                    text=normalized,
-                    rationale=fallback.rationale,
+        if fill_fallbacks:
+            for fallback in FALLBACK_CANDIDATES:
+                if len(parsed) >= count:
+                    break
+                normalized = self._normalize_prompt_text(fallback.text)
+                if normalized in seen_texts:
+                    continue
+                seen_texts.add(normalized)
+                parsed.append(
+                    PromptCandidate(
+                        name=fallback.name,
+                        text=normalized,
+                        rationale=fallback.rationale,
+                    )
                 )
-            )
 
         return parsed[:count]
+
+    def _merge_candidates(
+        self,
+        *,
+        existing: list[PromptCandidate],
+        incoming: list[PromptCandidate],
+        count: int,
+    ) -> list[PromptCandidate]:
+        merged: list[PromptCandidate] = []
+        seen_texts: set[str] = set()
+        for candidate in [*existing, *incoming]:
+            if candidate.text in seen_texts:
+                continue
+            seen_texts.add(candidate.text)
+            merged.append(candidate)
+            if len(merged) >= count:
+                break
+        if len(merged) < count:
+            for fallback in self._fallback_candidates(count):
+                if fallback.text in seen_texts:
+                    continue
+                seen_texts.add(fallback.text)
+                merged.append(fallback)
+                if len(merged) >= count:
+                    break
+        return merged[:count]
 
     def _fallback_candidates(self, count: int) -> list[PromptCandidate]:
         return [

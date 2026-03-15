@@ -29,20 +29,16 @@ class OCRClient:
         details["total_seconds"] = time.perf_counter() - started_at
         return text, details
 
-    def _encode_image(self, image_path: Path, max_dimension: int = 1600) -> tuple[str, str]:
+    def _encode_image(self, image_path: Path, max_dimension: int = 800) -> tuple[str, str]:
         with Image.open(image_path) as image:
             image = self._prepare_image(image, max_dimension=max_dimension)
             return self._encode_prepared_image(image)
 
-    def _prepare_image(self, image: Image.Image, *, max_dimension: int = 1600) -> Image.Image:
+    def _prepare_image(self, image: Image.Image, *, max_dimension: int = 800) -> Image.Image:
         image = image.convert("RGB")
-        width, height = image.size
-
-        # Full-page documents remain expensive even after default resizing.
-        if width >= 2000 and height >= 2800:
-            max_dimension = min(max_dimension, 1200)
 
         # Extremely wide line images collapse to unreadable heights when resized directly.
+        width, height = image.size
         if height > 0 and width / height > 12 and height < 192:
             target_height = 192
             padded = Image.new("RGB", (width, target_height), "white")
@@ -83,7 +79,7 @@ class OCRClient:
         preprocess_seconds = 0.0
         request_seconds = 0.0
         attempts = 0
-        for max_dimension in (1600, 1200, 1024, 800):
+        for max_dimension in (800,):
             preprocess_started_at = time.perf_counter()
             prepared = self._prepare_image(image, max_dimension=max_dimension)
             preprocess_seconds += time.perf_counter() - preprocess_started_at

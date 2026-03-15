@@ -46,9 +46,9 @@ def _build_settings(tmp_path: Path) -> Settings:
     return Settings(
         openai_api_key="test",
         openai_model="gpt-5-nano",
-        ollama_base_url="http://localhost:11434/v1",
-        ollama_api_key="ollama",
-        ollama_model="glm-ocr:latest",
+        ocr_base_url="http://localhost:8000/v1",
+        ocr_api_key="EMPTY",
+        ocr_model="GLM-OCR",
         arize_api_key=None,
         arize_space_id=None,
         output_root=tmp_path / "runs",

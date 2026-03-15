@@ -1,0 +1,5 @@
+FROM vllm/vllm-openai:v0.17.1
+
+# GLM-OCR is not recognized by the base image's bundled transformers 4.57.6.
+# Bake a fixed stable version once so container restarts do not reinstall deps.
+RUN pip install --no-cache-dir "transformers==5.1.0"

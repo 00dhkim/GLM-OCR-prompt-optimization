@@ -324,7 +324,7 @@ def main() -> None:
         "| 데이터 | KORIE 공개 OCR crop split |",
         "| 개발셋 | 60개 |",
         "| 검증셋 | 100개 |",
-        "| OCR 모델 | Ollama GLM-OCR |",
+        "| OCR 모델 | OpenAI-compatible GLM-OCR endpoint |",
         "| optimizer | gpt-5-nano |",
         "| 주지표 | CER |",
         "",

@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -76,6 +77,22 @@ def test_build_analysis_payload_prefers_english_context_and_failure_summary() ->
     assert "Chinese-character substitution" in payload["failure_summary"]["example_warning"]
 
 
+def test_build_candidate_request_payload_includes_max_prompt_length_constraint() -> None:
+    optimizer = PromptOptimizer(api_key="test", model="gpt-5-nano")
+
+    payload = optimizer._build_candidate_request_payload(
+        current_prompt=PromptCandidate(name="P0", text="Text Recognition:"),
+        aggregate=_aggregate(),
+        failure_summary=optimizer._summarize_failures(_failures()),
+        failure_payload=optimizer._failure_payload(_failures()),
+        analysis={"issues": [], "keep": [], "avoid": [], "rewrite_strategy": "shorten"},
+        count=3,
+    )
+
+    constraints = payload["constraints"]
+    assert any("1024 characters" in item for item in constraints)
+
+
 def test_parse_and_rank_candidates_prioritizes_english_and_adds_fallbacks() -> None:
     optimizer = PromptOptimizer(api_key="test", model="gpt-5-nano")
     content = """
@@ -96,3 +113,66 @@ def test_parse_and_rank_candidates_prioritizes_english_and_adds_fallbacks() -> N
     assert "Transcribe only the visible text" in candidates[0].text
     assert all("[unclear]" not in candidate.text.lower() for candidate in candidates)
     assert any(candidate.name.startswith("ENG-F") for candidate in candidates)
+
+
+def test_parse_and_rank_candidates_drops_overlength_prompts() -> None:
+    optimizer = PromptOptimizer(api_key="test", model="gpt-5-nano")
+    content = json.dumps(
+        {
+            "candidates": [
+                {"name": "LONG", "text": "x" * 1100, "rationale": "too long"},
+                {
+                    "name": "OK",
+                    "text": "Text Recognition:\nTranscribe only the visible text.",
+                    "rationale": "short enough",
+                },
+            ]
+        }
+    )
+
+    candidates = optimizer._parse_and_rank_candidates(content, count=2)
+
+    assert all(len(candidate.text) <= 1024 for candidate in candidates)
+    assert all(candidate.name != "LONG" for candidate in candidates)
+
+
+def test_generate_candidates_regenerates_when_overlength_candidates_are_filtered(monkeypatch) -> None:
+    optimizer = PromptOptimizer(api_key="test", model="gpt-5-nano")
+    responses = iter(
+        [
+            json.dumps(
+                {
+                    "candidates": [
+                        {"name": "LONG", "text": "x" * 1100, "rationale": "too long"},
+                        {"name": "OK1", "text": "Text Recognition:\nTranscribe only visible text.", "rationale": "ok"},
+                    ]
+                }
+            ),
+            json.dumps(
+                {
+                    "candidates": [
+                        {
+                            "name": "OK2",
+                            "text": "Text Recognition:\nOutput plain text only. Do not translate.",
+                            "rationale": "replacement",
+                        }
+                    ]
+                }
+            ),
+        ]
+    )
+
+    def fake_request(payload: dict[str, object]) -> str:
+        return next(responses)
+
+    monkeypatch.setattr(optimizer, "_request_candidates", fake_request)
+
+    candidates = optimizer.generate_candidates(
+        current_prompt=PromptCandidate(name="P0", text="Text Recognition:"),
+        aggregate=_aggregate(),
+        failures=_failures(),
+        count=2,
+    )
+
+    assert len(candidates) == 2
+    assert [candidate.name for candidate in candidates] == ["OK1", "OK2"]

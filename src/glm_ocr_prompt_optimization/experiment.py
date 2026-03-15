@@ -21,9 +21,9 @@ class ExperimentRunner:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.ocr_client = OCRClient(
-            base_url=settings.ollama_base_url,
-            api_key=settings.ollama_api_key,
-            model=settings.ollama_model,
+            base_url=settings.ocr_base_url,
+            api_key=settings.ocr_api_key,
+            model=settings.ocr_model,
         )
         self.optimizer = (
             PromptOptimizer(api_key=settings.openai_api_key, model=settings.openai_model)
