@@ -92,6 +92,10 @@ def save_validation_chart(validation_rows: list[dict[str, str]]) -> Path:
     return path
 
 
+def choose_best_prompt(rows: list[dict[str, str]]) -> dict[str, str]:
+    return max(rows, key=lambda row: (float(row["mean_total_score"]), -len(row["prompt_text"])))
+
+
 def parse_rounds(rows: list[dict[str, str]]) -> list[dict]:
     parsed = []
     index = 0
@@ -99,17 +103,20 @@ def parse_rounds(rows: list[dict[str, str]]) -> list[dict]:
     while index < len(rows):
         start = rows[index]
         candidates = rows[index + 1 : index + 6]
-        winner = max(candidates, key=lambda row: float(row["mean_total_score"]))
+        winner = choose_best_prompt(candidates)
         parsed.append(
             {
                 "round": round_number,
                 "start_name": start["prompt_name"],
+                "start_prompt": start["prompt_text"],
                 "start_cer": float(start["mean_cer"]),
                 "start_score": float(start["mean_total_score"]),
                 "winner_name": winner["prompt_name"],
                 "winner_prompt": winner["prompt_text"],
                 "winner_cer": float(winner["mean_cer"]),
                 "winner_score": float(winner["mean_total_score"]),
+                "start_row": start,
+                "candidate_rows": candidates,
             }
         )
         index += 6
@@ -121,6 +128,64 @@ def copy_sample_image(source: Path, target_name: str) -> Path:
     target = ASSET_DIR / target_name
     shutil.copyfile(source, target)
     return target
+
+
+def round_candidate_lines(round_row: dict[str, object]) -> list[str]:
+    winner_name = str(round_row["winner_name"])
+    start_row = round_row["start_row"]
+    assert isinstance(start_row, dict)
+    lines = [
+        f"### Round {round_row['round']} 전체 후보 성능",
+        "",
+        "| 구분 | Prompt | Mean CER | Mean Total Score | 비고 |",
+        "|---|---|---:|---:|---|",
+        f"| start | `{start_row['prompt_name']}` | {float(start_row['mean_cer']):.5f} | {float(start_row['mean_total_score']):.5f} | 다음 후보 생성 기준 |",
+    ]
+    for candidate in round_row["candidate_rows"]:
+        assert isinstance(candidate, dict)
+        is_winner = candidate["prompt_name"] == winner_name
+        prompt_name = f"**`{candidate['prompt_name']}`**" if is_winner else f"`{candidate['prompt_name']}`"
+        lines.append(
+            f"| candidate | {prompt_name} | {float(candidate['mean_cer']):.5f} | {float(candidate['mean_total_score']):.5f} | {'winner' if is_winner else ''} |"
+        )
+    lines.extend(
+        [
+            "",
+            "이 표의 뜻:",
+            "- start는 후보 생성의 출발점이다.",
+            "- 굵게 표시한 행이 해당 라운드 winner다.",
+            "",
+        ]
+    )
+    return lines
+
+
+def round_appendix_lines(round_row: dict[str, object]) -> list[str]:
+    lines = [
+        f"### Round {round_row['round']} 프롬프트 원문",
+        "",
+        f"#### Start `{round_row['start_name']}`",
+        "",
+        "```text",
+        str(round_row["start_prompt"]),
+        "```",
+        "",
+    ]
+    winner_name = str(round_row["winner_name"])
+    for candidate in round_row["candidate_rows"]:
+        assert isinstance(candidate, dict)
+        suffix = " (winner)" if candidate["prompt_name"] == winner_name else ""
+        lines.extend(
+            [
+                f"#### `{candidate['prompt_name']}`{suffix}",
+                "",
+                "```text",
+                candidate["prompt_text"],
+                "```",
+                "",
+            ]
+        )
+    return lines
 
 
 def main() -> None:
@@ -237,6 +302,14 @@ def main() -> None:
             "- optimizer가 round를 거치면서 CER를 계속 낮췄다.",
             "- 마지막 winner는 `Prompt E`였고, 이게 검증셋 final prompt로 넘어갔다.",
             "",
+        ]
+    )
+
+    for row in rounds:
+        lines.extend(round_candidate_lines(row))
+
+    lines.extend(
+        [
             "## 6. 검증셋 결과",
             "",
             f"![CORD validation chart](./{validation_chart.relative_to(DOCS_DIR).as_posix()})",
@@ -327,8 +400,17 @@ def main() -> None:
             "이 표의 뜻:",
             "- 프롬프트는 데이터 형태에 따라 효과가 달라진다.",
             "- 따라서 prompt optimization 결과를 일반화하려면 `어떤 이미지 단위에서 실험했는지`를 항상 같이 봐야 한다.",
+            "",
+            "## Appendix A. Round별 전체 프롬프트 원문",
+            "",
+            "이 부록의 뜻:",
+            "- 각 라운드에서 어떤 후보가 실제로 검토됐는지 문서만으로 추적할 수 있다.",
+            "- winner 외 탈락 후보도 다시 읽어보며 비교할 수 있다.",
         ]
     )
+
+    for row in rounds:
+        lines.extend(round_appendix_lines(row))
 
     REPORT_PATH.write_text("\n".join(lines), encoding="utf-8")
 

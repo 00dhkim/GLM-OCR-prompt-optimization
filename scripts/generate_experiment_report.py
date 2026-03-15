@@ -125,6 +125,10 @@ def save_category_chart(category_rows: list[dict]) -> Path:
     return path
 
 
+def choose_best_prompt(rows: list[dict[str, str]]) -> dict[str, str]:
+    return max(rows, key=lambda row: (float(row["mean_total_score"]), -len(row["prompt_text"])))
+
+
 def parse_rounds(rows: list[dict[str, str]]) -> list[dict[str, object]]:
     parsed = []
     index = 0
@@ -132,7 +136,7 @@ def parse_rounds(rows: list[dict[str, str]]) -> list[dict[str, object]]:
     while index < len(rows):
         start = rows[index]
         candidates = rows[index + 1 : index + 6]
-        winner = max(candidates, key=lambda row: float(row["mean_total_score"]))
+        winner = choose_best_prompt(candidates)
         parsed.append(
             {
                 "round": round_number,
@@ -144,6 +148,8 @@ def parse_rounds(rows: list[dict[str, str]]) -> list[dict[str, object]]:
                 "winner_prompt": winner["prompt_text"],
                 "winner_cer": float(winner["mean_cer"]),
                 "winner_score": float(winner["mean_total_score"]),
+                "start_row": start,
+                "candidate_rows": candidates,
             }
         )
         index += 6
@@ -153,6 +159,70 @@ def parse_rounds(rows: list[dict[str, str]]) -> list[dict[str, object]]:
 
 def prompt_section(title: str, name: str, prompt_text: str) -> str:
     return f"### {title}: `{name}`\n\n```text\n{prompt_text}\n```\n"
+
+
+def round_candidate_lines(round_row: dict[str, object]) -> list[str]:
+    winner_name = str(round_row["winner_name"])
+    start_row = round_row["start_row"]
+    assert isinstance(start_row, dict)
+    lines = [
+        f"### Round {round_row['round']} 전체 후보 성능",
+        "",
+        "| 구분 | Prompt | Mean CER | Total Score | Non-Korean Rate | Empty Rate | 비고 |",
+        "|---|---|---:|---:|---:|---:|---|",
+        (
+            f"| start | `{start_row['prompt_name']}` | {float(start_row['mean_cer']):.5f} | "
+            f"{float(start_row['mean_total_score']):.5f} | {float(start_row['non_korean_rate'])*100:.2f}% | "
+            f"{float(start_row['empty_rate'])*100:.2f}% | 다음 후보 생성 기준 |"
+        ),
+    ]
+    for candidate in round_row["candidate_rows"]:
+        assert isinstance(candidate, dict)
+        is_winner = candidate["prompt_name"] == winner_name
+        prompt_name = f"**`{candidate['prompt_name']}`**" if is_winner else f"`{candidate['prompt_name']}`"
+        lines.append(
+            f"| candidate | {prompt_name} | {float(candidate['mean_cer']):.5f} | "
+            f"{float(candidate['mean_total_score']):.5f} | {float(candidate['non_korean_rate'])*100:.2f}% | "
+            f"{float(candidate['empty_rate'])*100:.2f}% | {'winner' if is_winner else ''} |"
+        )
+    lines.extend(
+        [
+            "",
+            "이 표의 뜻:",
+            "- start는 이전 라운드 winner다.",
+            "- 굵게 표시한 행이 그 라운드에서 실제로 채택된 후보다.",
+            "",
+        ]
+    )
+    return lines
+
+
+def round_appendix_lines(round_row: dict[str, object]) -> list[str]:
+    lines = [
+        f"### Round {round_row['round']} 프롬프트 원문",
+        "",
+        f"#### Start `{round_row['start_name']}`",
+        "",
+        "```text",
+        str(round_row["start_prompt"]),
+        "```",
+        "",
+    ]
+    winner_name = str(round_row["winner_name"])
+    for candidate in round_row["candidate_rows"]:
+        assert isinstance(candidate, dict)
+        suffix = " (winner)" if candidate["prompt_name"] == winner_name else ""
+        lines.extend(
+            [
+                f"#### `{candidate['prompt_name']}`{suffix}",
+                "",
+                "```text",
+                candidate["prompt_text"],
+                "```",
+                "",
+            ]
+        )
+    return lines
 
 
 def main() -> None:
@@ -317,6 +387,14 @@ def main() -> None:
             "- 개발셋에서는 CER가 아주 조금씩 내려갔다.",
             "- 하지만 좋아진 폭이 너무 작아서, 나중에 검증셋에서 무너질 위험이 있었다.",
             "",
+        ]
+    )
+
+    for row in round_rows:
+        lines.extend(round_candidate_lines(row))
+
+    lines.extend(
+        [
             "### iteration에서 선택된 프롬프트 원문",
             "",
         ]
@@ -445,8 +523,18 @@ def main() -> None:
             "| markdown / LaTeX / meta-text 금지를 명시 | 실제 회귀 사례가 이 패턴으로 나타남 |",
             "| category별로 따로 최적화 | 전화번호/시간과 수량/날짜는 반응이 다름 |",
             "| full-receipt 데이터로 다시 검증 | 현재 공개 데이터는 crop OCR이라 PRD 원래 목표와 다름 |",
+            "",
+            "## 부록 A. Round별 전체 프롬프트 원문",
+            "",
+            "이 부록의 뜻:",
+            "- winner만이 아니라 탈락한 후보까지 보고서 안에서 바로 확인할 수 있다.",
+            "- 다음 실험에서 어떤 문구가 검토됐는지 다시 비교하기 쉽다.",
+            "",
         ]
     )
+
+    for row in round_rows:
+        lines.extend(round_appendix_lines(row))
 
     REPORT_PATH.write_text("\n".join(lines), encoding="utf-8")
 
