@@ -148,6 +148,7 @@
 - `HF dataset 준비 후 실험` -> `./scripts/run_hf_prepare_and_experiment.sh`
 - `held-out benchmark 생성 후 실험` -> `./scripts/run_heldout_benchmark_experiment.sh`
 - `1-round vLLM smoke 실험` -> `./scripts/run_vllm_smoke_experiment.sh`
+- `3-round vLLM benchmark 실험` -> `./scripts/run_vllm_benchmark_experiment.sh`
 - 새 보고서 스크립트를 만들 때도 가능하면 `runs/<run-name>/seed`, `optimize`, `validation` 구조를 그대로 사용한다.
 
 ### 자연어 별칭을 스크립트와 연결해 해석한다
@@ -161,6 +162,8 @@
   -> `./scripts/run_heldout_benchmark_experiment.sh`
 - `smoke run`, `1 라운드 스모크`, `vllm smoke`, `가볍게 한 번만 최적화 돌려라`
   -> `./scripts/run_vllm_smoke_experiment.sh`
+- `benchmark run`, `3 라운드 벤치마크`, `성능 기준 실험`, `vllm benchmark`
+  -> `./scripts/run_vllm_benchmark_experiment.sh`
 - `빠른 체크`, `quick check`, `unit만 확인`
   -> `./scripts/codex_preflight.sh`
 - `CLI 포함 체크`, `cli check`, `integration까지`
@@ -182,6 +185,8 @@
   -> `./scripts/run_heldout_benchmark_experiment.sh`
 - 사용자가 `smoke`, `1라운드`, `가볍게`, `vllm smoke` 같은 표현으로 짧은 optimizer 검증을 원하면
   -> `./scripts/run_vllm_smoke_experiment.sh`
+- 사용자가 `benchmark`, `3라운드`, `성능 검증`, `vllm benchmark` 같은 표현으로 실제 성능 비교를 원하면
+  -> `./scripts/run_vllm_benchmark_experiment.sh`
 - 위 넷 중 어디에도 분명히 안 맞으면 Codex는 바로 실행하지 말고, `이미 dev/val manifest가 있는지`, `HF에서 받아야 하는지`, `held-out를 다시 만들지`만 짧게 확인한다.
 - 사용자가 명시적으로 `개입 없이 끝까지 진행하라`고 했으면, Codex는 저장소 안의 가장 가까운 manifest와 기존 run 패턴을 보고 임시 판단해 진행할 수 있다.
 - 입력 해석이 맞는지 불안하면 실제 실행보다 먼저 `--dry-run`으로 확인하는 편을 우선한다.

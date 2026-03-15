@@ -63,8 +63,9 @@ def save_validation_chart(rows: list[dict[str, str]]) -> Path:
     cer = [float(row["mean_cer"]) for row in rows]
     score = [float(row["mean_total_score"]) for row in rows]
     repetition = [float(row["repetition_rate"]) for row in rows]
+    markdown = [float(row.get("markdown_leakage_rate", 0.0)) for row in rows]
 
-    fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
+    fig, axes = plt.subplots(1, 4, figsize=(18, 4.5))
     axes[0].bar(labels, cer, color=["#76B7B2", "#E15759"])
     axes[0].set_title("Validation CER")
     axes[0].grid(axis="y", alpha=0.2)
@@ -76,6 +77,10 @@ def save_validation_chart(rows: list[dict[str, str]]) -> Path:
     axes[2].bar(labels, repetition, color=["#76B7B2", "#E15759"])
     axes[2].set_title("Repetition Rate")
     axes[2].grid(axis="y", alpha=0.2)
+
+    axes[3].bar(labels, markdown, color=["#76B7B2", "#E15759"])
+    axes[3].set_title("Markdown Leakage Rate")
+    axes[3].grid(axis="y", alpha=0.2)
 
     fig.tight_layout()
     path = ASSET_DIR / "validation.png"
@@ -98,6 +103,63 @@ def save_sample_delta_chart(samples: list[dict[str, object]]) -> Path:
 
     fig.tight_layout()
     path = ASSET_DIR / "sample_delta.png"
+    fig.savefig(path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
+def save_failure_mode_chart(baseline_rows: list[dict[str, object]], final_rows: list[dict[str, object]]) -> Path:
+    metrics = {
+        "repetition": lambda row: row["penalties"]["repetition"] > 0,
+        "script_substitution": lambda row: row["penalties"]["chinese_mixed"] > 0,
+        "markdown": lambda row: row.get("contains_markdown", False),
+        "instruction_echo": lambda row: row.get("instruction_echo", False),
+        "line_break_mismatch": lambda row: row.get("line_break_mismatch", False),
+    }
+    labels = list(metrics)
+    baseline_values = [sum(1 for row in baseline_rows if fn(row)) / max(1, len(baseline_rows)) for fn in metrics.values()]
+    final_values = [sum(1 for row in final_rows if fn(row)) / max(1, len(final_rows)) for fn in metrics.values()]
+    x = range(len(labels))
+
+    fig, ax = plt.subplots(figsize=(10, 4.8))
+    ax.bar([i - 0.18 for i in x], baseline_values, width=0.36, label="baseline", color="#76B7B2")
+    ax.bar([i + 0.18 for i in x], final_values, width=0.36, label="final", color="#E15759")
+    ax.set_xticks(list(x))
+    ax.set_xticklabels(labels, rotation=15)
+    ax.set_title("Failure Mode Rate")
+    ax.grid(axis="y", alpha=0.2)
+    ax.legend()
+
+    fig.tight_layout()
+    path = ASSET_DIR / "failure_modes.png"
+    fig.savefig(path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
+def save_field_breakdown_chart(report: dict[str, object]) -> Path:
+    breakdown = report.get("field_breakdown", {})
+    labels = ["numeric_field_cer", "non_numeric_field_cer"]
+    baseline_values = [
+        float(breakdown.get("baseline_numeric_field_cer", 0.0)),
+        float(breakdown.get("baseline_non_numeric_field_cer", 0.0)),
+    ]
+    final_values = [
+        float(breakdown.get("final_numeric_field_cer", 0.0)),
+        float(breakdown.get("final_non_numeric_field_cer", 0.0)),
+    ]
+    x = range(len(labels))
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    ax.bar([i - 0.18 for i in x], baseline_values, width=0.36, label="baseline", color="#76B7B2")
+    ax.bar([i + 0.18 for i in x], final_values, width=0.36, label="final", color="#E15759")
+    ax.set_xticks(list(x))
+    ax.set_xticklabels(labels)
+    ax.set_title("Field-Type CER Breakdown")
+    ax.grid(axis="y", alpha=0.2)
+    ax.legend()
+
+    fig.tight_layout()
+    path = ASSET_DIR / "field_breakdown.png"
     fig.savefig(path, dpi=180, bbox_inches="tight")
     plt.close(fig)
     return path
@@ -142,6 +204,7 @@ def main() -> None:
     baseline_eval = {
         row["sample_id"]: row for row in read_jsonl(run_root / "validation" / "baseline" / "evaluations.jsonl")
     }
+    baseline_eval_rows = list(baseline_eval.values())
     final_eval = read_jsonl(run_root / "validation" / "final" / "evaluations.jsonl")
 
     samples: list[dict[str, object]] = []
@@ -165,6 +228,8 @@ def main() -> None:
     seed_chart = save_seed_chart(seed_rows)
     validation_chart = save_validation_chart(validation_rows)
     sample_delta_chart = save_sample_delta_chart(samples)
+    failure_mode_chart = save_failure_mode_chart(baseline_eval_rows, final_eval)
+    field_breakdown_chart = save_field_breakdown_chart(report)
 
     best_seed = max(seed_rows, key=lambda row: float(row["mean_total_score"]))
     best_case = samples[0]
@@ -214,8 +279,25 @@ def main() -> None:
         f"- baseline validation CER는 `{report['baseline']['mean_cer']:.4f}`였다.",
         f"- final prompt validation CER는 `{report['final']['mean_cer']:.4f}`였다.",
         f"- 반복률은 `{report['baseline']['repetition_rate']:.2%} -> {report['final']['repetition_rate']:.2%}`였다.",
+        f"- markdown leakage는 `{report['baseline'].get('markdown_leakage_rate', 0.0):.2%} -> {report['final'].get('markdown_leakage_rate', 0.0):.2%}`였다.",
         "",
-        "## 4. 샘플별 차이",
+        "## 4. 실패 모드 비교",
+        "",
+        f"![Failure modes](./{rel(failure_mode_chart)})",
+        "",
+        "이 차트의 뜻:",
+        "- baseline과 final이 반복, 스크립트 치환, markdown leakage, instruction echo, 줄바꿈 붕괴에서 얼마나 달라졌는지 보여준다.",
+        "- prompt optimization이 실제로 어떤 실패 모드를 줄였는지 확인하는 핵심 차트다.",
+        "",
+        "## 5. 필드 타입별 차이",
+        "",
+        f"![Field breakdown](./{rel(field_breakdown_chart)})",
+        "",
+        "이 차트의 뜻:",
+        "- 숫자 위주 필드와 일반 텍스트 필드를 분리해 CER를 비교한다.",
+        "- 숫자 필드가 무너지면 평균 CER가 좋아 보여도 채택하기 어렵다.",
+        "",
+        "## 6. 샘플별 차이",
         "",
         f"![Sample delta](./{rel(sample_delta_chart)})",
         "",
@@ -224,7 +306,7 @@ def main() -> None:
         "- 빨간색은 optimized가 더 나빴던 샘플이다.",
         "- 이 차트로 guardrail 이후에도 validation이 실제로 나아졌는지 한눈에 볼 수 있다.",
         "",
-        "## 5. 대표 사례",
+        "## 7. 대표 사례",
         "",
         "### 5.1 가장 덜 나빠진 샘플",
         "",
@@ -280,7 +362,7 @@ def main() -> None:
         "Final output:",
         f"`{worst_case['final_text']}`",
         "",
-        "## 6. Round별 전체 후보",
+        "## 8. Round별 전체 후보",
         "",
         "이 섹션의 뜻:",
         "- round마다 어떤 시작 prompt가 있었고, 어떤 candidate가 만들어졌는지 숨기지 않고 남긴다.",
@@ -323,7 +405,7 @@ def main() -> None:
 
     lines.extend(
         [
-            "## 7. Prompt 원문",
+        "## 9. Prompt 원문",
             "",
             "baseline은 짧고 단순했다.",
             "",
@@ -346,14 +428,14 @@ def main() -> None:
     lines.extend(prompt_block("### Final optimized prompt", final_prompt))
     lines.extend(
         [
-            "## 8. Arize AX 연결 상태",
+        "## 10. Arize AX 연결 상태",
             "",
             "- 현재 코드 기준으로 tracing은 `arize-otel`을 통해 Arize AX 공식 경로를 사용한다.",
             "- 반면 Phoenix prompt/dataset REST client는 `PHOENIX_BASE_URL`이 확인되지 않으면 시도하지 않는다.",
             f"- report JSON의 reject summary는 `{report.get('rejected_reason_summary', {})}`다.",
             "- 이번 환경에서는 AX tracing 기본 경로는 정리됐지만, Phoenix app API base URL은 아직 확정하지 못했다.",
             "",
-            "## 9. 해석",
+        "## 11. 해석",
             "",
             "이번 결과는 prompt learning SDK가 나쁘다는 뜻이 아니다.",
             "문제는 OCR 태스크에서 system prompt가 너무 길어지면 모델이 전사기보다 instruction follower처럼 반응하면서 출력이 무너질 수 있다는 점이다.",
