@@ -174,6 +174,7 @@ source = { editable = "." }
 dependencies = [
     { name = "matplotlib" },
     { name = "openai" },
+    { name = "pillow" },
     { name = "pydantic" },
     { name = "python-dotenv" },
 ]
@@ -187,6 +188,7 @@ dev = [
 requires-dist = [
     { name = "matplotlib", specifier = ">=3.10.1" },
     { name = "openai", specifier = ">=1.68.2" },
+    { name = "pillow", specifier = ">=11.2.1" },
     { name = "pydantic", specifier = ">=2.10.6" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
 ]

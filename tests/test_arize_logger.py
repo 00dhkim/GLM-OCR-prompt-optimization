@@ -19,7 +19,9 @@ def _sample_aggregate() -> AggregateEvaluation:
         prompt_name="baseline",
         prompt_text="Text Recognition:",
         sample_count=10,
+        mean_raw_cer=0.22,
         mean_cer=0.2,
+        mean_token_f1=0.85,
         mean_base_score=0.8,
         mean_total_score=0.75,
         non_korean_rate=0.1,
@@ -47,6 +49,7 @@ def test_log_aggregate_uses_arize_ax_endpoint(monkeypatch) -> None:
     assert seen["body"]["model_id"] == "glm-ocr-prompt-optimization"
     assert seen["body"]["model_version"] == "baseline"
     assert seen["body"]["prediction"]["label"]["numeric"] == 0.75
+    assert seen["body"]["features"]["mean_raw_cer"] == 0.22
     assert seen["body"]["features"]["mean_cer"] == 0.2
 
 

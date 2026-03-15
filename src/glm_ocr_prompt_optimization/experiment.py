@@ -291,7 +291,9 @@ class ExperimentRunner:
         return {
             "sample_id": row.sample_id,
             "prompt_name": row.prompt_name,
+            "raw_cer": row.raw_cer,
             "cer": row.cer,
+            "token_f1": row.token_f1,
             "base_score": row.base_score,
             "total_score": row.total_score,
             "penalties": {
@@ -321,7 +323,9 @@ class ExperimentRunner:
                     EvaluationResult(
                         sample_id=payload["sample_id"],
                         prompt_name=payload["prompt_name"],
+                        raw_cer=payload.get("raw_cer", payload["cer"]),
                         cer=payload["cer"],
+                        token_f1=payload.get("token_f1", 0.0),
                         base_score=payload["base_score"],
                         total_score=payload["total_score"],
                         penalties=PenaltyBreakdown(

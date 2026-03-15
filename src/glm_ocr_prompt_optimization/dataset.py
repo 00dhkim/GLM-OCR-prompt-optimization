@@ -5,7 +5,10 @@ import os
 import random
 import urllib.parse
 import urllib.request
+from collections import defaultdict
 from pathlib import Path
+
+from PIL import Image
 
 from .models import DatasetItem
 
@@ -171,6 +174,98 @@ def build_hf_image_text_manifest(
     return items
 
 
+def merge_manifests(*, manifest_paths: list[Path], output_path: Path | None = None) -> list[DatasetItem]:
+    merged: list[DatasetItem] = []
+    seen_ids: set[str] = set()
+    for manifest_path in manifest_paths:
+        for item in load_manifest(manifest_path):
+            if item.sample_id in seen_ids:
+                continue
+            seen_ids.add(item.sample_id)
+            merged.append(item)
+
+    merged.sort(key=lambda item: item.sample_id)
+    if output_path is not None:
+        write_manifest(output_path, merged)
+    return merged
+
+
+def filter_items_for_benchmark(
+    items: list[DatasetItem],
+    *,
+    max_text_length: int | None = None,
+    max_image_width: int | None = None,
+    max_aspect_ratio: float | None = None,
+) -> list[DatasetItem]:
+    filtered: list[DatasetItem] = []
+    for item in items:
+        if max_text_length is not None and len(item.reference_text) > max_text_length:
+            continue
+
+        width, height = _image_size(item.image_path)
+        aspect_ratio = width / max(height, 1)
+        if max_image_width is not None and width > max_image_width:
+            continue
+        if max_aspect_ratio is not None and aspect_ratio > max_aspect_ratio:
+            continue
+        filtered.append(item)
+    return filtered
+
+
+def stratified_split_items(
+    items: list[DatasetItem],
+    *,
+    dev_count: int,
+    val_count: int,
+    seed: int = 42,
+) -> tuple[list[DatasetItem], list[DatasetItem]]:
+    requested = dev_count + val_count
+    if requested > len(items):
+        raise ValueError(f"Requested {requested} items but only {len(items)} are available.")
+
+    rng = random.Random(seed)
+    buckets: dict[tuple[str, int, int], list[DatasetItem]] = defaultdict(list)
+    for item in items:
+        buckets[_benchmark_bucket(item)].append(item)
+
+    for bucket_items in buckets.values():
+        rng.shuffle(bucket_items)
+
+    dev_items: list[DatasetItem] = []
+    val_items: list[DatasetItem] = []
+
+    ordered_buckets = sorted(buckets.values(), key=len, reverse=True)
+    while len(dev_items) < dev_count or len(val_items) < val_count:
+        progress = False
+        for bucket_items in ordered_buckets:
+            if not bucket_items:
+                continue
+            target = dev_items if len(dev_items) < dev_count else val_items
+            if target is val_items and len(val_items) >= val_count:
+                continue
+            target.append(bucket_items.pop())
+            progress = True
+            if len(dev_items) >= dev_count and len(val_items) >= val_count:
+                break
+        if not progress:
+            break
+
+    remaining = [item for bucket_items in ordered_buckets for item in bucket_items]
+    rng.shuffle(remaining)
+    while len(dev_items) < dev_count:
+        dev_items.append(remaining.pop())
+    while len(val_items) < val_count:
+        val_items.append(remaining.pop())
+
+    dev_items.sort(key=lambda item: item.sample_id)
+    val_items.sort(key=lambda item: item.sample_id)
+    return dev_items, val_items
+
+
+def write_manifest(path: Path, items: list[DatasetItem], *, split: str | None = None) -> None:
+    _write_manifest(path, items, split=split)
+
+
 def download_hf_repo_image_sample(
     *,
     dataset_id: str,
@@ -326,7 +421,7 @@ def _infer_extension_from_url(url: str) -> str:
     return ".jpg"
 
 
-def _write_manifest(path: Path, items: list[DatasetItem]) -> None:
+def _write_manifest(path: Path, items: list[DatasetItem], *, split: str | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
         for item in items:
@@ -334,10 +429,24 @@ def _write_manifest(path: Path, items: list[DatasetItem]) -> None:
                 "id": item.sample_id,
                 "image_path": os.path.relpath(item.image_path, path.parent),
                 "reference_text": item.reference_text,
-                "split": item.split,
+                "split": split or item.split,
                 "metadata": item.metadata,
             }
             handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
+def _image_size(path: Path) -> tuple[int, int]:
+    with Image.open(path) as image:
+        return image.size
+
+
+def _benchmark_bucket(item: DatasetItem) -> tuple[str, int, int]:
+    width, height = _image_size(item.image_path)
+    aspect_ratio = width / max(height, 1)
+    text_bucket = min(len(item.reference_text) // 20, 6)
+    aspect_bucket = min(int(aspect_ratio // 5), 6)
+    source = item.metadata.get("source", "unknown")
+    return source, text_bucket, aspect_bucket
 
 
 def _resolve_manifest_path(base_dir: Path, image_path_value: str) -> Path:

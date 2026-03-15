@@ -92,7 +92,7 @@ def test_build_report_creates_json(tmp_path: Path) -> None:
     evaluation_path = tmp_path / "evaluations.jsonl"
     evaluation_path.write_text(
         (
-            '{"sample_id":"s1","prompt_name":"final","cer":0.1,"base_score":0.9,"total_score":0.9,'
+            '{"sample_id":"s1","prompt_name":"final","raw_cer":0.1,"cer":0.1,"token_f1":1.0,"base_score":0.9,"total_score":0.9,'
             '"penalties":{"non_korean_mixed":0.0,"repetition":0.0,"empty_or_garbage":0.0},'
             '"predicted_text":"합계 12000","reference_text":"합계 12000","image_path":"sample.png","split":"val"}\n'
         ),
@@ -103,7 +103,9 @@ def test_build_report_creates_json(tmp_path: Path) -> None:
         prompt_name="baseline",
         prompt_text="Text Recognition:",
         sample_count=1,
+        mean_raw_cer=0.5,
         mean_cer=0.5,
+        mean_token_f1=0.5,
         mean_base_score=0.5,
         mean_total_score=0.4,
         non_korean_rate=0.5,
@@ -114,7 +116,9 @@ def test_build_report_creates_json(tmp_path: Path) -> None:
         prompt_name="final",
         prompt_text="optimized",
         sample_count=1,
+        mean_raw_cer=0.1,
         mean_cer=0.1,
+        mean_token_f1=1.0,
         mean_base_score=0.9,
         mean_total_score=0.9,
         non_korean_rate=0.0,
@@ -142,7 +146,9 @@ def test_select_adopted_prompt_falls_back_to_baseline_when_final_is_worse(tmp_pa
         prompt_name="baseline",
         prompt_text=baseline_prompt.text,
         sample_count=100,
+        mean_raw_cer=0.3,
         mean_cer=0.3,
+        mean_token_f1=0.8,
         mean_base_score=0.7,
         mean_total_score=0.69,
         non_korean_rate=0.01,
@@ -153,7 +159,9 @@ def test_select_adopted_prompt_falls_back_to_baseline_when_final_is_worse(tmp_pa
         prompt_name="final",
         prompt_text=final_prompt.text,
         sample_count=100,
+        mean_raw_cer=0.6,
         mean_cer=0.6,
+        mean_token_f1=0.4,
         mean_base_score=0.4,
         mean_total_score=0.39,
         non_korean_rate=0.0,

@@ -9,6 +9,10 @@ from .dataset import (
     build_hf_image_text_manifest,
     build_korie_ocr_manifest,
     download_hf_repo_image_sample,
+    filter_items_for_benchmark,
+    merge_manifests,
+    stratified_split_items,
+    write_manifest,
 )
 from .experiment import ExperimentRunner
 from .models import AggregateEvaluation, PromptCandidate
@@ -55,6 +59,16 @@ def build_parser() -> argparse.ArgumentParser:
     hf_image_parser.add_argument("--dataset-id", required=True)
     hf_image_parser.add_argument("--output-dir", type=Path, required=True)
     hf_image_parser.add_argument("--limit", type=int, default=20)
+
+    benchmark_parser = subparsers.add_parser("prepare-heldout-benchmark")
+    benchmark_parser.add_argument("--source-manifest", type=Path, action="append", required=True)
+    benchmark_parser.add_argument("--output-dir", type=Path, required=True)
+    benchmark_parser.add_argument("--dev-count", type=int, default=16)
+    benchmark_parser.add_argument("--val-count", type=int, default=16)
+    benchmark_parser.add_argument("--seed", type=int, default=42)
+    benchmark_parser.add_argument("--max-text-length", type=int)
+    benchmark_parser.add_argument("--max-image-width", type=int)
+    benchmark_parser.add_argument("--max-aspect-ratio", type=float)
 
     seed_parser = subparsers.add_parser("seed-eval")
     seed_parser.add_argument("--manifest", type=Path, required=True)
@@ -165,6 +179,29 @@ def main() -> None:
         print(f"images={len(paths)}")
         if paths:
             print(paths[0])
+        return
+
+    if args.command == "prepare-heldout-benchmark":
+        merged = merge_manifests(manifest_paths=args.source_manifest)
+        filtered = filter_items_for_benchmark(
+            merged,
+            max_text_length=args.max_text_length,
+            max_image_width=args.max_image_width,
+            max_aspect_ratio=args.max_aspect_ratio,
+        )
+        dev_items, val_items = stratified_split_items(
+            filtered,
+            dev_count=args.dev_count,
+            val_count=args.val_count,
+            seed=args.seed,
+        )
+        args.output_dir.mkdir(parents=True, exist_ok=True)
+        write_manifest(args.output_dir / "full.jsonl", filtered)
+        write_manifest(args.output_dir / "dev.jsonl", dev_items, split="dev")
+        write_manifest(args.output_dir / "val.jsonl", val_items, split="val")
+        print(f"filtered={len(filtered)}")
+        print(f"dev={args.output_dir / 'dev.jsonl'} ({len(dev_items)} items)")
+        print(f"val={args.output_dir / 'val.jsonl'} ({len(val_items)} items)")
         return
 
     if args.command == "seed-eval":

@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from glm_ocr_prompt_optimization.dataset import (
@@ -5,7 +6,10 @@ from glm_ocr_prompt_optimization.dataset import (
     _infer_extension_from_url,
     _resolve_manifest_path,
     build_korie_ocr_manifest,
+    filter_items_for_benchmark,
     load_manifest,
+    merge_manifests,
+    stratified_split_items,
 )
 
 
@@ -89,3 +93,93 @@ def test_resolve_manifest_path_falls_back_to_repo_relative_path(tmp_path: Path) 
     resolved = _resolve_manifest_path(tmp_path / "manifests", str(repo_relative.relative_to(tmp_path)))
 
     assert resolved == repo_relative.relative_to(tmp_path)
+
+
+def test_merge_manifests_deduplicates_by_sample_id(tmp_path: Path) -> None:
+    image = tmp_path / "sample.png"
+    image.write_bytes(b"fake")
+    first = tmp_path / "first.jsonl"
+    second = tmp_path / "second.jsonl"
+    first.write_text(
+        '{"id":"s1","image_path":"sample.png","reference_text":"abc","split":"dev","metadata":{}}\n',
+        encoding="utf-8",
+    )
+    second.write_text(
+        '{"id":"s1","image_path":"sample.png","reference_text":"abc","split":"val","metadata":{}}\n'
+        '{"id":"s2","image_path":"sample.png","reference_text":"def","split":"val","metadata":{}}\n',
+        encoding="utf-8",
+    )
+
+    merged = merge_manifests(manifest_paths=[first, second])
+
+    assert [item.sample_id for item in merged] == ["s1", "s2"]
+
+
+def test_filter_items_for_benchmark_respects_limits(tmp_path: Path) -> None:
+    short = tmp_path / "short.png"
+    short.write_bytes(b"fake")
+    long = tmp_path / "long.png"
+    long.write_bytes(b"fake")
+
+    from PIL import Image
+
+    Image.new("RGB", (1200, 80), "white").save(short)
+    Image.new("RGB", (6000, 48), "white").save(long)
+
+    items = load_manifest(
+        _write_manifest(
+            tmp_path / "source.jsonl",
+            [
+                {"id": "s1", "image_path": "short.png", "reference_text": "짧은 문장", "split": "train", "metadata": {}},
+                {
+                    "id": "s2",
+                    "image_path": "long.png",
+                    "reference_text": "긴 문장" * 50,
+                    "split": "train",
+                    "metadata": {},
+                },
+            ],
+        )
+    )
+
+    filtered = filter_items_for_benchmark(
+        items,
+        max_text_length=20,
+        max_image_width=2000,
+        max_aspect_ratio=40,
+    )
+
+    assert [item.sample_id for item in filtered] == ["s1"]
+
+
+def test_stratified_split_items_returns_requested_counts(tmp_path: Path) -> None:
+    from PIL import Image
+
+    manifest = tmp_path / "source.jsonl"
+    rows = []
+    for index in range(12):
+        image_path = tmp_path / f"sample_{index}.png"
+        width = 1200 if index < 6 else 1600
+        height = 80
+        Image.new("RGB", (width, height), "white").save(image_path)
+        rows.append(
+            {
+                "id": f"s{index:02d}",
+                "image_path": image_path.name,
+                "reference_text": "짧은 문장" if index % 2 == 0 else "조금 더 긴 문장입니다",
+                "split": "train",
+                "metadata": {"source": "test"},
+            }
+        )
+    items = load_manifest(_write_manifest(manifest, rows))
+
+    dev_items, val_items = stratified_split_items(items, dev_count=4, val_count=4, seed=7)
+
+    assert len(dev_items) == 4
+    assert len(val_items) == 4
+    assert not ({item.sample_id for item in dev_items} & {item.sample_id for item in val_items})
+
+
+def _write_manifest(path: Path, rows: list[dict]) -> Path:
+    path.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows), encoding="utf-8")
+    return path

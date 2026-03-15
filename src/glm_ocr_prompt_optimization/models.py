@@ -40,7 +40,9 @@ class PenaltyBreakdown:
 class EvaluationResult:
     sample_id: str
     prompt_name: str
+    raw_cer: float
     cer: float
+    token_f1: float
     base_score: float
     total_score: float
     penalties: PenaltyBreakdown
@@ -69,7 +71,9 @@ class AggregateEvaluation:
     prompt_name: str
     prompt_text: str
     sample_count: int
+    mean_raw_cer: float
     mean_cer: float
+    mean_token_f1: float
     mean_base_score: float
     mean_total_score: float
     non_korean_rate: float

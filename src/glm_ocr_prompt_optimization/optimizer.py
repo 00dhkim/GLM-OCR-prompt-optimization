@@ -9,6 +9,15 @@ from openai import OpenAI
 from .models import AggregateEvaluation, EvaluationResult, PromptCandidate
 
 
+ANALYSIS_SYSTEM_PROMPT = """You analyze OCR prompt failures before rewriting prompts.
+Return strict JSON with top-level keys:
+- issues: list of objects with name, severity, evidence, and instruction
+- keep: list of strengths to preserve from the current prompt
+- avoid: list of prompt patterns to avoid next
+- rewrite_strategy: short paragraph
+Prefer compact, evidence-based analysis. Do not write candidate prompts yet.
+"""
+
 OPTIMIZER_SYSTEM_PROMPT = """You optimize prompts for plain-text OCR.
 Return strict JSON with a top-level key named "candidates".
 Each candidate must contain "name", "text", and "rationale".
@@ -21,6 +30,20 @@ Strong candidates usually:
 - preserve reading order and line breaks when visually clear
 - forbid repeated text
 """
+
+FALLBACK_ANALYSIS = {
+    "issues": [
+        {
+            "name": "character substitution or ordering errors",
+            "severity": "medium",
+            "evidence": "Top failures show mismatched characters despite non-empty output.",
+            "instruction": "Use a short transcription-only prompt and avoid interpretation.",
+        }
+    ],
+    "keep": ["The task should stay plain-text OCR only."],
+    "avoid": ["Long prompts that add explanation or extraction behavior."],
+    "rewrite_strategy": "Keep the prompt short, imperative, and English-first. Emphasize visible-text transcription only.",
+}
 
 FALLBACK_CANDIDATES = [
     PromptCandidate(
@@ -62,7 +85,9 @@ class FailureExample:
     sample_id: str
     reference_text: str
     predicted_text: str
+    raw_cer: float
     cer: float
+    token_f1: float
     non_korean_penalty: float
     repetition_penalty: float
     empty_penalty: float
@@ -81,47 +106,98 @@ class PromptOptimizer:
         failures: list[EvaluationResult],
         count: int = 5,
     ) -> list[PromptCandidate]:
-        request_payload = self._build_request_payload(
+        failure_payload = self._failure_payload(failures[:15])
+        failure_summary = self._summarize_failures(failures[:15])
+        analysis = self._analyze_failures(
             current_prompt=current_prompt,
             aggregate=aggregate,
-            failures=failures,
+            failure_summary=failure_summary,
+            failure_payload=failure_payload,
+        )
+        request_payload = self._build_candidate_request_payload(
+            current_prompt=current_prompt,
+            aggregate=aggregate,
+            failure_summary=failure_summary,
+            failure_payload=failure_payload,
+            analysis=analysis,
             count=count,
         )
 
-        response = self._client.responses.create(
-            model=self._model,
-            reasoning={"effort": "minimal"},
-            input=[
-                {"role": "system", "content": OPTIMIZER_SYSTEM_PROMPT},
-                {"role": "user", "content": json.dumps(request_payload, ensure_ascii=False)},
-            ],
-        )
+        try:
+            response = self._client.responses.create(
+                model=self._model,
+                reasoning={"effort": "minimal"},
+                input=[
+                    {"role": "system", "content": OPTIMIZER_SYSTEM_PROMPT},
+                    {"role": "user", "content": json.dumps(request_payload, ensure_ascii=False)},
+                ],
+            )
+            return self._parse_and_rank_candidates(response.output_text.strip(), count=count)
+        except Exception:
+            return self._fallback_candidates(count)
 
-        return self._parse_and_rank_candidates(response.output_text.strip(), count=count)
-
-    def _build_request_payload(
+    def _analyze_failures(
         self,
         *,
         current_prompt: PromptCandidate,
         aggregate: AggregateEvaluation,
-        failures: list[EvaluationResult],
+        failure_summary: dict[str, object],
+        failure_payload: list[dict[str, object]],
+    ) -> dict[str, object]:
+        request_payload = self._build_analysis_payload(
+            current_prompt=current_prompt,
+            aggregate=aggregate,
+            failure_summary=failure_summary,
+            failure_payload=failure_payload,
+        )
+        try:
+            response = self._client.responses.create(
+                model=self._model,
+                reasoning={"effort": "minimal"},
+                input=[
+                    {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},
+                    {"role": "user", "content": json.dumps(request_payload, ensure_ascii=False)},
+                ],
+            )
+            payload = json.loads(response.output_text.strip())
+            if not isinstance(payload.get("issues"), list):
+                return FALLBACK_ANALYSIS
+            return payload
+        except Exception:
+            return FALLBACK_ANALYSIS
+
+    def _build_analysis_payload(
+        self,
+        *,
+        current_prompt: PromptCandidate,
+        aggregate: AggregateEvaluation,
+        failure_summary: dict[str, object],
+        failure_payload: list[dict[str, object]],
+    ) -> dict[str, object]:
+        return {
+            "task": "Analyze why the OCR prompt is underperforming and what prompt changes are justified.",
+            "current_prompt": current_prompt.text,
+            "aggregate_metrics": asdict(aggregate),
+            "failure_summary": failure_summary,
+            "failure_examples": failure_payload,
+            "analysis_requirements": [
+                "Explain what to preserve from the current prompt.",
+                "Identify the top error categories with evidence.",
+                "Recommend prompt edits, not model changes.",
+                "Assume prompt language should stay English unless evidence suggests otherwise.",
+            ],
+        }
+
+    def _build_candidate_request_payload(
+        self,
+        *,
+        current_prompt: PromptCandidate,
+        aggregate: AggregateEvaluation,
+        failure_summary: dict[str, object],
+        failure_payload: list[dict[str, object]],
+        analysis: dict[str, object],
         count: int,
     ) -> dict[str, object]:
-        limited_failures = failures[:15]
-        failure_payload = [
-            asdict(
-                FailureExample(
-                    sample_id=row.sample_id,
-                    reference_text=row.reference_text,
-                    predicted_text=row.predicted_text,
-                    cer=row.cer,
-                    non_korean_penalty=row.penalties.non_korean_mixed,
-                    repetition_penalty=row.penalties.repetition,
-                    empty_penalty=row.penalties.empty_or_garbage,
-                )
-            )
-            for row in limited_failures
-        ]
         return {
             "task": "Improve the OCR prompt while preserving plain text OCR output.",
             "prompt_language_policy": {
@@ -149,13 +225,33 @@ class PromptOptimizer:
                 "Do not ask for JSON output.",
                 "Focus on transcription rules only.",
                 "Preserve plain text OCR behavior.",
+                "Do not drift far from the current prompt unless failures strongly justify it.",
                 f"Return exactly {count} candidates.",
             ],
             "current_prompt": current_prompt.text,
             "aggregate_metrics": asdict(aggregate),
-            "failure_summary": self._summarize_failures(limited_failures),
+            "failure_summary": failure_summary,
             "failure_examples": failure_payload,
+            "analysis": analysis,
         }
+
+    def _failure_payload(self, failures: list[EvaluationResult]) -> list[dict[str, object]]:
+        return [
+            asdict(
+                FailureExample(
+                    sample_id=row.sample_id,
+                    reference_text=row.reference_text,
+                    predicted_text=row.predicted_text,
+                    raw_cer=row.raw_cer,
+                    cer=row.cer,
+                    token_f1=row.token_f1,
+                    non_korean_penalty=row.penalties.non_korean_mixed,
+                    repetition_penalty=row.penalties.repetition,
+                    empty_penalty=row.penalties.empty_or_garbage,
+                )
+            )
+            for row in failures
+        ]
 
     def _summarize_failures(self, failures: list[EvaluationResult]) -> dict[str, object]:
         if not failures:
@@ -166,6 +262,9 @@ class PromptOptimizer:
                 "empty_or_garbage_count": 0,
                 "avg_prediction_length": 0.0,
                 "avg_reference_length": 0.0,
+                "avg_raw_cer": 0.0,
+                "avg_normalized_cer": 0.0,
+                "avg_token_f1": 0.0,
                 "common_failure_modes": [],
             }
 
@@ -190,6 +289,9 @@ class PromptOptimizer:
             "empty_or_garbage_count": sum(1 for row in failures if row.penalties.empty_or_garbage > 0),
             "avg_prediction_length": round(avg_prediction_length, 2),
             "avg_reference_length": round(avg_reference_length, 2),
+            "avg_raw_cer": round(sum(row.raw_cer for row in failures) / len(failures), 4),
+            "avg_normalized_cer": round(sum(row.cer for row in failures) / len(failures), 4),
+            "avg_token_f1": round(sum(row.token_f1 for row in failures) / len(failures), 4),
             "common_failure_modes": modes,
         }
 
@@ -230,8 +332,14 @@ class PromptOptimizer:
 
         return parsed[:count]
 
+    def _fallback_candidates(self, count: int) -> list[PromptCandidate]:
+        return [
+            PromptCandidate(name=item.name, text=self._normalize_prompt_text(item.text), rationale=item.rationale)
+            for item in FALLBACK_CANDIDATES[:count]
+        ]
+
     def _normalize_prompt_text(self, text: str) -> str:
-        normalized = text.strip()
+        normalized = text.strip().replace("\\r\\n", "\n").replace("\\n", "\n")
         if not normalized:
             return normalized
         if not normalized.startswith("Text Recognition:"):
