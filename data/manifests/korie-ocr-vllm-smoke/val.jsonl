@@ -1,0 +1,12 @@
+{"id": "IMG00019_Item_Unit_Price", "image_path": "../../../../../data/korie-ocr/val/val/IMG00019_Item_Unit_Price.jpg", "reference_text": "3,800", "split": "val", "metadata": {"category": "Item_Unit_Price"}}
+{"id": "IMG00077_MerchantAddress", "image_path": "../../../../../data/korie-ocr/val/val/IMG00077_MerchantAddress.jpg", "reference_text": "서울 강남구 남부순환로 2748 (도곡동)", "split": "val", "metadata": {"category": "MerchantAddress"}}
+{"id": "IMG00085_TotalTax", "image_path": "../../../../../data/korie-ocr/val/val/IMG00085_TotalTax.jpg", "reference_text": "1,250", "split": "val", "metadata": {"category": "TotalTax"}}
+{"id": "IMG00103_MerchantName", "image_path": "../../../../../data/korie-ocr/val/val/IMG00103_MerchantName.jpg", "reference_text": "주) 한국마트", "split": "val", "metadata": {"category": "MerchantName"}}
+{"id": "IMG00166_ReceiptNumber", "image_path": "../../../../../data/korie-ocr/val/val/IMG00166_ReceiptNumber.jpg", "reference_text": "00727413,", "split": "val", "metadata": {"category": "ReceiptNumber"}}
+{"id": "IMG00183_Item_barcode", "image_path": "../../../../../data/korie-ocr/val/val/IMG00183_Item_barcode.jpg", "reference_text": "[POS 1068437]", "split": "val", "metadata": {"category": "Item_barcode"}}
+{"id": "IMG00205_MerchantAddress", "image_path": "../../../../../data/korie-ocr/val/val/IMG00205_MerchantAddress.jpg", "reference_text": "충북 청주시 서원구 모충로12번", "split": "val", "metadata": {"category": "MerchantAddress"}}
+{"id": "IMG00496_MerchantAddress", "image_path": "../../../../../data/korie-ocr/val/val/IMG00496_MerchantAddress.jpg", "reference_text": "충북 청주시 서원구 산남동 334-3", "split": "val", "metadata": {"category": "MerchantAddress"}}
+{"id": "IMG00525_Item_Unit_Price", "image_path": "../../../../../data/korie-ocr/val/val/IMG00525_Item_Unit_Price.jpg", "reference_text": "1,000 1,990 1,500 500", "split": "val", "metadata": {"category": "Item_Unit_Price"}}
+{"id": "IMG00567_PaymentDate", "image_path": "../../../../../data/korie-ocr/val/val/IMG00567_PaymentDate.jpg", "reference_text": "2025-07-07(월", "split": "val", "metadata": {"category": "PaymentDate"}}
+{"id": "IMG00569_TransactionDate", "image_path": "../../../../../data/korie-ocr/val/val/IMG00569_TransactionDate.jpg", "reference_text": "2025.06.28", "split": "val", "metadata": {"category": "TransactionDate"}}
+{"id": "IMG00570_TransactionDate", "image_path": "../../../../../data/korie-ocr/val/val/IMG00570_TransactionDate.jpg", "reference_text": "2025. 05. 06", "split": "val", "metadata": {"category": "TransactionDate"}}
